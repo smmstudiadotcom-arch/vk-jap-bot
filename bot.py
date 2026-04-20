@@ -7,8 +7,8 @@ from datetime import datetime
 JAP_API_KEY    = "ec2fb6c8f5a4ea7ba6cf532e87a09895"
 JAP_API_URL    = "https://justanotherpanel.com/api/v2"
 JAP_SERVICE    = 3756
-QUANTITY_MIN   = 60
-QUANTITY_MAX   = 110
+QUANTITY_MIN   = 20
+QUANTITY_MAX   = 35
 
 VK_REMIXSID    = "1_QPjYLuIorEdrXgxmkOg6FFm-cgERMzjD6_SmYWiZSPEU7BjWP5YcG46GTg9Jm2kNdZx-vF0GuggiK-l1vsJ_LA"
 VK_PAGES       = ["biznes___13"]
