@@ -39,7 +39,6 @@ def save_state(data):
 
 def get_latest_post(page_slug):
     try:
-        # Получаем ID страницы
         resp = requests.get(f"{VK_API_URL}/wall.get", params={
             "domain": page_slug,
             "count": 5,
@@ -48,24 +47,20 @@ def get_latest_post(page_slug):
             "v": VK_VERSION,
         }, timeout=15)
         log(f"📥 VK @{page_slug}: {resp.status_code}")
-
         data = resp.json()
         if "error" in data:
             log(f"❌ VK API ошибка: {data['error']}")
             return None, None
-
         items = data.get("response", {}).get("items", [])
         if not items:
             log(f"⚠️  Посты не найдены для @{page_slug}")
             return None, None
-
         latest = items[0]
         owner_id = latest["owner_id"]
         post_id = latest["id"]
         post_url = f"https://vk.com/wall{owner_id}_{post_id}"
         log(f"✅ Последний пост @{page_slug}: {post_url}")
         return f"{owner_id}_{post_id}", post_url
-
     except Exception as e:
         log(f"❌ Ошибка VK @{page_slug}: {e}")
         return None, None
@@ -109,9 +104,7 @@ def main():
     log(f"📋 Страницы: {VK_PAGES}")
     log(f"⚙️  Услуга: {JAP_SERVICE} | Кол-во: {QUANTITY_MIN}-{QUANTITY_MAX}")
     check_balance()
-
     state = load_state()
-
     for page in VK_PAGES:
         if page not in state:
             post_id, _ = get_latest_post(page)
@@ -119,7 +112,6 @@ def main():
                 state[page] = post_id
                 log(f"📌 @{page} — последний пост: #{post_id}. Жду новые...")
     save_state(state)
-
     while True:
         time.sleep(CHECK_INTERVAL)
         try:
