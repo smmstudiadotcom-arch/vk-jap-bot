@@ -10,19 +10,12 @@ JAP_SERVICE    = 3756
 QUANTITY_MIN   = 20
 QUANTITY_MAX   = 35
 
-VK_REMIXSID    = "1_QPjYLuIorEdrXgxmkOg6FFm-cgERMzjD6_SmYWiZSPEU7BjWP5YcG46GTg9Jm2kNdZx-vF0GuggiK-l1vsJ_LA"
+VK_TOKEN       = "vk1.a.3l-M4WzpxupxkQ1LO5QEJKxhXtlyzgP6m9f7UnUXmtmOCGTp8Pj26J5cdb_hPqB8-wSrFsRTgUVIwcwZQK6iL-cx8p23NQnt65AcdJ1yWNnqj21ZKOWnSrPyKiUudvEjdCQjzBNoDSF2vq6AjPKbPtvP-kOGAo28Uhiet66MoYaXUU9UktA3zGcZfrf7V0nKu7eUkOqnHAU9a-GcfGIW0Q"
+VK_API_URL     = "https://api.vk.com/method"
+VK_VERSION     = "5.131"
 VK_PAGES       = ["biznes___13"]
 CHECK_INTERVAL = 60
 STATE_FILE     = "vk_last_posts.txt"
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Cookie": f"remixsid={VK_REMIXSID}",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "ru-RU,ru;q=0.9",
-    "Accept-Encoding": "identity",
-    "Referer": "https://vk.com/",
-}
 
 def log(msg):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -46,28 +39,29 @@ def save_state(data):
 
 def get_latest_post(page_slug):
     try:
-        url = f"https://vk.com/{page_slug}"
-        resp = requests.get(url, headers=HEADERS, timeout=15)
+        # Получаем ID страницы
+        resp = requests.get(f"{VK_API_URL}/wall.get", params={
+            "domain": page_slug,
+            "count": 5,
+            "filter": "owner",
+            "access_token": VK_TOKEN,
+            "v": VK_VERSION,
+        }, timeout=15)
         log(f"📥 VK @{page_slug}: {resp.status_code}")
 
-        if resp.status_code != 200:
-            log(f"⚠️  Ошибка: {resp.status_code}")
+        data = resp.json()
+        if "error" in data:
+            log(f"❌ VK API ошибка: {data['error']}")
             return None, None
 
-        html = resp.content.decode("utf-8", errors="ignore")
-
-        # Ищем ID постов
-        import re
-        # Pattern: wall-OWNERID_POSTID
-        matches = re.findall(r'wall(-?\d+)_(\d+)', html)
-        if not matches:
+        items = data.get("response", {}).get("items", [])
+        if not items:
             log(f"⚠️  Посты не найдены для @{page_slug}")
-            log(f"📄 HTML: {html[:300]}")
             return None, None
 
-        # Берём пост с наибольшим ID
-        latest = max(matches, key=lambda x: int(x[1]))
-        owner_id, post_id = latest
+        latest = items[0]
+        owner_id = latest["owner_id"]
+        post_id = latest["id"]
         post_url = f"https://vk.com/wall{owner_id}_{post_id}"
         log(f"✅ Последний пост @{page_slug}: {post_url}")
         return f"{owner_id}_{post_id}", post_url
@@ -118,7 +112,6 @@ def main():
 
     state = load_state()
 
-    # Первый запуск — запоминаем последние посты
     for page in VK_PAGES:
         if page not in state:
             post_id, _ = get_latest_post(page)
