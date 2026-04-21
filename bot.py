@@ -20,7 +20,7 @@ FB_PAGE_URL       = "https://www.facebook.com/profile.php?id=100081997113052"
 FB_SERVICE        = 9604
 FB_QTY_MIN        = 500
 FB_QTY_MAX        = 1000
-FB_CHECK_INTERVAL = 43200  # 12 часов
+FB_CHECK_INTERVAL = 1800  # каждые 30 минут
 
 # ══════════════════════════════════════
 #  VKONTAKTE
@@ -126,7 +126,6 @@ def facebook_bot():
                 save_state("last_fb_post_id.txt", last_id)
                 log("Facebook", f"📌 Последний пост: #{last_id}. Жду новые...")
     while True:
-        time.sleep(FB_CHECK_INTERVAL)
         try:
             posts = get_fb_posts()
             if not posts:
@@ -152,6 +151,7 @@ def facebook_bot():
                 log("Facebook", f"🔍 Нет новых постов (последний: #{last_id})")
         except Exception as e:
             log("Facebook", f"❌ Ошибка: {e}")
+        time.sleep(FB_CHECK_INTERVAL)
 
 # ══════════════════════════════════════
 #  VKONTAKTE
@@ -159,7 +159,7 @@ def facebook_bot():
 def get_vk_post(page_slug):
     try:
         resp = requests.get(f"{VK_API_URL}/wall.get", params={
-            "domain": page_slug, "count": 5, "filter": "owner",
+            "domain": page_slug, "count": 10, "filter": "owner",
             "access_token": VK_TOKEN, "v": VK_VERSION,
         }, timeout=15)
         data = resp.json()
@@ -169,11 +169,15 @@ def get_vk_post(page_slug):
         items = data.get("response", {}).get("items", [])
         if not items:
             return None, None
-        latest = items[0]
+        # Фильтруем закреплённые посты и сортируем по дате
+        non_pinned = [i for i in items if not i.get("is_pinned")]
+        if not non_pinned:
+            non_pinned = items
+        latest = max(non_pinned, key=lambda x: x.get("date", 0))
         owner_id = latest["owner_id"]
         post_id = latest["id"]
         post_url = f"https://vk.com/wall{owner_id}_{post_id}"
-        log("VK", f"✅ Последний пост @{page_slug}: {post_url}")
+        log("VK", f"✅ Последний пост @{page_slug}: {post_url} (date: {latest.get('date')})")
         return f"{owner_id}_{post_id}", post_url
     except Exception as e:
         log("VK", f"❌ Ошибка @{page_slug}: {e}")
