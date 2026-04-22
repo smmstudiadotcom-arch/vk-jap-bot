@@ -26,7 +26,7 @@ VK_CHECK_INTERVAL = 60
 # ══════════════════════════════════════
 #  RUTUBE
 # ══════════════════════════════════════
-RUTUBE_USER           = "gowithrussia"
+RUTUBE_CHANNEL_ID     = "56184868"
 RUTUBE_SERVICE        = 9777
 RUTUBE_QTY_MIN        = 500
 RUTUBE_QTY_MAX        = 1200
@@ -151,41 +151,47 @@ def vk_bot():
 # ══════════════════════════════════════
 #  RUTUBE
 # ══════════════════════════════════════
-def get_rutube_channel_id():
+def get_rutube_videos():
     try:
-        url = f"https://rutube.ru/api/accounts/public_profile/?slug={RUTUBE_USER}&format=json"
-        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
-        if resp.status_code == 200:
-            data = resp.json()
-            channel_id = data.get("id") or data.get("channel_id")
-            log("Rutube", f"✅ Channel ID: {channel_id}")
-            return channel_id
-    except Exception as e:
-        log("Rutube", f"❌ Ошибка профиля: {e}")
-    return None
-
-def get_rutube_videos(channel_id):
-    try:
-        url = f"https://rutube.ru/api/video/person/{channel_id}/?format=json&page=1&pageSize=10"
-        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        # Правильный endpoint Rutube API
+        url = f"https://rutube.ru/api/video/person/{RUTUBE_CHANNEL_ID}/?format=json&page=1&pageSize=10&ordering=-created_ts"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            "Accept": "application/json",
+            "Referer": "https://rutube.ru/",
+        }
+        resp = requests.get(url, headers=headers, timeout=15)
         log("Rutube", f"📥 API: {resp.status_code}")
+
         if resp.status_code == 200:
             data = resp.json()
             results = data.get("results", [])
             log("Rutube", f"📊 Найдено видео: {len(results)}")
             return results
+
+        # Try alternative endpoint
+        url2 = f"https://rutube.ru/api/feeds/person/{RUTUBE_CHANNEL_ID}/?format=json&page=1"
+        resp2 = requests.get(url2, headers=headers, timeout=15)
+        log("Rutube", f"📥 API v2: {resp2.status_code}")
+        if resp2.status_code == 200:
+            data2 = resp2.json()
+            results2 = data2.get("results", [])
+            log("Rutube", f"📊 Найдено видео: {len(results2)}")
+            return results2
+
+        log("Rutube", f"❌ Ошибка: {resp.text[:200]}")
         return []
+
     except Exception as e:
         log("Rutube", f"❌ Ошибка: {e}")
         return []
 
 def rutube_bot():
-    log("Rutube", f"📺 Запущен | @{RUTUBE_USER} | Услуга: {RUTUBE_SERVICE} | {RUTUBE_QTY_MIN}-{RUTUBE_QTY_MAX}")
-    channel_id = get_rutube_channel_id()
+    log("Rutube", f"📺 Запущен | Channel ID: {RUTUBE_CHANNEL_ID} | Услуга: {RUTUBE_SERVICE} | {RUTUBE_QTY_MIN}-{RUTUBE_QTY_MAX}")
     last_id = load_state("last_rutube_id.txt")
 
     if not last_id:
-        videos = get_rutube_videos(channel_id)
+        videos = get_rutube_videos()
         if videos:
             latest = videos[0]
             vid_id = str(latest.get("id") or latest.get("uuid") or "")
@@ -197,8 +203,9 @@ def rutube_bot():
     while True:
         time.sleep(RUTUBE_CHECK_INTERVAL)
         try:
-            videos = get_rutube_videos(channel_id)
+            videos = get_rutube_videos()
             if not videos:
+                log("Rutube", "⚠️  Видео не найдены")
                 continue
 
             new_videos = []
