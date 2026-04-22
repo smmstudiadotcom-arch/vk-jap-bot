@@ -3,7 +3,6 @@ import random
 import time
 import os
 import threading
-import xml.etree.ElementTree as ET
 from datetime import datetime
 
 # ══════════════════════════════════════
@@ -11,16 +10,6 @@ from datetime import datetime
 # ══════════════════════════════════════
 JAP_API_KEY = "ec2fb6c8f5a4ea7ba6cf532e87a09895"
 JAP_API_URL = "https://justanotherpanel.com/api/v2"
-
-# ══════════════════════════════════════
-#  FACEBOOK (RSS)
-# ══════════════════════════════════════
-FB_RSS_URL        = "https://fetchrss.com/feed/1wEkeiByC1ti1wEkddBg9EOA.rss"
-FB_PAGE_URL       = "https://www.facebook.com/profile.php?id=100081997113052"
-FB_SERVICE        = 9604
-FB_QTY_MIN        = 500
-FB_QTY_MAX        = 1000
-FB_CHECK_INTERVAL = 1800  # каждые 30 минут
 
 # ══════════════════════════════════════
 #  VKONTAKTE
@@ -33,6 +22,15 @@ VK_QTY_MIN        = 20
 VK_QTY_MAX        = 35
 VK_PAGES          = ["biznes___13"]
 VK_CHECK_INTERVAL = 60
+
+# ══════════════════════════════════════
+#  RUTUBE
+# ══════════════════════════════════════
+RUTUBE_USER           = "gowithrussia"
+RUTUBE_SERVICE        = 9777
+RUTUBE_QTY_MIN        = 500
+RUTUBE_QTY_MAX        = 1200
+RUTUBE_CHECK_INTERVAL = 60
 
 def log(platform, msg):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -94,66 +92,6 @@ def check_balance():
         log("JAP", f"❌ Ошибка баланса: {e}")
 
 # ══════════════════════════════════════
-#  FACEBOOK
-# ══════════════════════════════════════
-def get_fb_posts():
-    try:
-        log("Facebook", "📤 Читаю RSS ленту...")
-        resp = requests.get(FB_RSS_URL, timeout=15)
-        log("Facebook", f"📥 RSS: {resp.status_code}")
-        if resp.status_code != 200:
-            return []
-        root = ET.fromstring(resp.content)
-        items = []
-        for item in root.findall(".//item"):
-            guid = item.findtext("guid") or ""
-            link = item.findtext("link") or ""
-            items.append({"postId": guid, "url": link})
-        log("Facebook", f"📊 Найдено постов: {len(items)}")
-        return items
-    except Exception as e:
-        log("Facebook", f"❌ Ошибка: {e}")
-        return []
-
-def facebook_bot():
-    log("Facebook", f"📘 Запущен | Услуга: {FB_SERVICE} | {FB_QTY_MIN}-{FB_QTY_MAX} | Проверка каждые 12ч")
-    last_id = load_state("last_fb_post_id.txt")
-    if not last_id:
-        posts = get_fb_posts()
-        if posts:
-            last_id = str(posts[0].get("postId") or "")
-            if last_id:
-                save_state("last_fb_post_id.txt", last_id)
-                log("Facebook", f"📌 Последний пост: #{last_id}. Жду новые...")
-    while True:
-        try:
-            posts = get_fb_posts()
-            if not posts:
-                continue
-            new_posts = []
-            for post in posts:
-                pid = str(post.get("postId") or "")
-                if pid and pid != last_id:
-                    new_posts.append(post)
-                else:
-                    break
-            if new_posts:
-                log("Facebook", f"🆕 Новых постов: {len(new_posts)}")
-                latest_id = str(posts[0].get("postId") or "")
-                for post in new_posts:
-                    purl = post.get("url") or FB_PAGE_URL
-                    log("Facebook", f"🆕 Пост: {purl}")
-                    create_jap_order("Facebook", purl, FB_SERVICE, FB_QTY_MIN, FB_QTY_MAX)
-                    time.sleep(2)
-                save_state("last_fb_post_id.txt", latest_id)
-                last_id = latest_id
-            else:
-                log("Facebook", f"🔍 Нет новых постов (последний: #{last_id})")
-        except Exception as e:
-            log("Facebook", f"❌ Ошибка: {e}")
-        time.sleep(FB_CHECK_INTERVAL)
-
-# ══════════════════════════════════════
 #  VKONTAKTE
 # ══════════════════════════════════════
 def get_vk_post(page_slug):
@@ -169,7 +107,6 @@ def get_vk_post(page_slug):
         items = data.get("response", {}).get("items", [])
         if not items:
             return None, None
-        # Фильтруем закреплённые посты и сортируем по дате
         non_pinned = [i for i in items if not i.get("is_pinned")]
         if not non_pinned:
             non_pinned = items
@@ -177,7 +114,7 @@ def get_vk_post(page_slug):
         owner_id = latest["owner_id"]
         post_id = latest["id"]
         post_url = f"https://vk.com/wall{owner_id}_{post_id}"
-        log("VK", f"✅ Последний пост @{page_slug}: {post_url} (date: {latest.get('date')})")
+        log("VK", f"✅ Последний пост @{page_slug}: {post_url}")
         return f"{owner_id}_{post_id}", post_url
     except Exception as e:
         log("VK", f"❌ Ошибка @{page_slug}: {e}")
@@ -212,22 +149,101 @@ def vk_bot():
             log("VK", f"❌ Ошибка: {e}")
 
 # ══════════════════════════════════════
+#  RUTUBE
+# ══════════════════════════════════════
+def get_rutube_channel_id():
+    try:
+        url = f"https://rutube.ru/api/accounts/public_profile/?slug={RUTUBE_USER}&format=json"
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        if resp.status_code == 200:
+            data = resp.json()
+            channel_id = data.get("id") or data.get("channel_id")
+            log("Rutube", f"✅ Channel ID: {channel_id}")
+            return channel_id
+    except Exception as e:
+        log("Rutube", f"❌ Ошибка профиля: {e}")
+    return None
+
+def get_rutube_videos(channel_id):
+    try:
+        url = f"https://rutube.ru/api/video/person/{channel_id}/?format=json&page=1&pageSize=10"
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        log("Rutube", f"📥 API: {resp.status_code}")
+        if resp.status_code == 200:
+            data = resp.json()
+            results = data.get("results", [])
+            log("Rutube", f"📊 Найдено видео: {len(results)}")
+            return results
+        return []
+    except Exception as e:
+        log("Rutube", f"❌ Ошибка: {e}")
+        return []
+
+def rutube_bot():
+    log("Rutube", f"📺 Запущен | @{RUTUBE_USER} | Услуга: {RUTUBE_SERVICE} | {RUTUBE_QTY_MIN}-{RUTUBE_QTY_MAX}")
+    channel_id = get_rutube_channel_id()
+    last_id = load_state("last_rutube_id.txt")
+
+    if not last_id:
+        videos = get_rutube_videos(channel_id)
+        if videos:
+            latest = videos[0]
+            vid_id = str(latest.get("id") or latest.get("uuid") or "")
+            if vid_id:
+                save_state("last_rutube_id.txt", vid_id)
+                last_id = vid_id
+                log("Rutube", f"📌 Последнее видео: #{vid_id}. Жду новые...")
+
+    while True:
+        time.sleep(RUTUBE_CHECK_INTERVAL)
+        try:
+            videos = get_rutube_videos(channel_id)
+            if not videos:
+                continue
+
+            new_videos = []
+            for video in videos:
+                vid_id = str(video.get("id") or video.get("uuid") or "")
+                if vid_id and vid_id != str(last_id):
+                    new_videos.append(video)
+                else:
+                    break
+
+            if new_videos:
+                log("Rutube", f"🆕 Новых видео: {len(new_videos)}")
+                latest_id = str(videos[0].get("id") or videos[0].get("uuid") or "")
+                for video in new_videos:
+                    vid_id = str(video.get("id") or video.get("uuid") or "")
+                    vid_url = f"https://rutube.ru/video/{vid_id}/"
+                    title = video.get("title", "")
+                    log("Rutube", f"🆕 {title[:50]} | {vid_url}")
+                    create_jap_order("Rutube", vid_url, RUTUBE_SERVICE, RUTUBE_QTY_MIN, RUTUBE_QTY_MAX)
+                    time.sleep(2)
+                save_state("last_rutube_id.txt", latest_id)
+                last_id = latest_id
+            else:
+                log("Rutube", f"🔍 Нет новых видео (последнее: #{last_id})")
+
+        except Exception as e:
+            log("Rutube", f"❌ Ошибка: {e}")
+
+# ══════════════════════════════════════
 #  MAIN
 # ══════════════════════════════════════
 def main():
-    log("MAIN", "🚀 Facebook + VK бот запущен!")
+    log("MAIN", "🚀 VK + Rutube бот запущен!")
     check_balance()
 
     threads = [
-        threading.Thread(target=facebook_bot, name="Facebook", daemon=True),
         threading.Thread(target=vk_bot, name="VK", daemon=True),
+        threading.Thread(target=rutube_bot, name="Rutube", daemon=True),
     ]
 
     for t in threads:
         t.start()
         time.sleep(3)
 
-    log("MAIN", "✅ Оба бота запущены! Facebook + VK")
+    log("MAIN", "✅ Оба бота запущены! VK + Rutube")
 
     while True:
         time.sleep(3600)
