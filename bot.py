@@ -2,6 +2,7 @@ import requests
 import random
 import time
 import os
+import re
 import threading
 from datetime import datetime
 
@@ -31,6 +32,28 @@ RUTUBE_SERVICE        = 9777
 RUTUBE_QTY_MIN        = 500
 RUTUBE_QTY_MAX        = 1200
 RUTUBE_CHECK_INTERVAL = 60
+
+# ══════════════════════════════════════
+#  FACEBOOK (cookies)
+# ══════════════════════════════════════
+FB_PAGE_URL       = "https://www.facebook.com/profile.php?id=100081997113052"
+FB_SERVICE        = 9604
+FB_QTY_MIN        = 500
+FB_QTY_MAX        = 1000
+FB_CHECK_INTERVAL = 60
+C_USER = "61553351803414"
+XS     = "8%3AeGYkn8717BMe-g%3A2%3A1774503965%3A-1%3A-1%3A%3AAcw0XpXFaM1nyL4JOlFdYs_Ud6Y079Nz9FGx2eBrLs8"
+DATR   = "gvGqaR00HB8BBQCtWvA_ZrBw"
+FR     = "1fXp7RjNu6E4tlLeA.AWc5dZieQn71hppDlUvFZLqzKA5QYrGNQzKXlgvHvbeVm7zLhgs.Bp6coy..AAA.0.0.Bp6coy.AWeEM5yj4-p0pnZr32HrLye4l9I"
+SB     = "hfGqaZIWmBX2PQV9iqh9Tr1V"
+FB_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+    "Cookie": f"c_user={C_USER}; xs={XS}; datr={DATR}; fr={FR}; sb={SB}; ps_l=1; ps_n=1",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+    "Accept-Encoding": "identity",
+    "Referer": "https://www.facebook.com/",
+}
 
 def log(platform, msg):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -153,61 +176,36 @@ def vk_bot():
 # ══════════════════════════════════════
 def get_rutube_videos():
     try:
-        # Правильный endpoint Rutube API
         url = f"https://rutube.ru/api/video/person/{RUTUBE_CHANNEL_ID}/?format=json&page=1&pageSize=10&ordering=-created_ts"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            "Accept": "application/json",
-            "Referer": "https://rutube.ru/",
-        }
+        headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json", "Referer": "https://rutube.ru/"}
         resp = requests.get(url, headers=headers, timeout=15)
         log("Rutube", f"📥 API: {resp.status_code}")
-
         if resp.status_code == 200:
-            data = resp.json()
-            results = data.get("results", [])
+            results = resp.json().get("results", [])
             log("Rutube", f"📊 Найдено видео: {len(results)}")
             return results
-
-        # Try alternative endpoint
-        url2 = f"https://rutube.ru/api/feeds/person/{RUTUBE_CHANNEL_ID}/?format=json&page=1"
-        resp2 = requests.get(url2, headers=headers, timeout=15)
-        log("Rutube", f"📥 API v2: {resp2.status_code}")
-        if resp2.status_code == 200:
-            data2 = resp2.json()
-            results2 = data2.get("results", [])
-            log("Rutube", f"📊 Найдено видео: {len(results2)}")
-            return results2
-
-        log("Rutube", f"❌ Ошибка: {resp.text[:200]}")
         return []
-
     except Exception as e:
         log("Rutube", f"❌ Ошибка: {e}")
         return []
 
 def rutube_bot():
-    log("Rutube", f"📺 Запущен | Channel ID: {RUTUBE_CHANNEL_ID} | Услуга: {RUTUBE_SERVICE} | {RUTUBE_QTY_MIN}-{RUTUBE_QTY_MAX}")
+    log("Rutube", f"📺 Запущен | Channel: {RUTUBE_CHANNEL_ID} | Услуга: {RUTUBE_SERVICE} | {RUTUBE_QTY_MIN}-{RUTUBE_QTY_MAX}")
     last_id = load_state("last_rutube_id.txt")
-
     if not last_id:
         videos = get_rutube_videos()
         if videos:
-            latest = videos[0]
-            vid_id = str(latest.get("id") or latest.get("uuid") or "")
+            vid_id = str(videos[0].get("id") or videos[0].get("uuid") or "")
             if vid_id:
                 save_state("last_rutube_id.txt", vid_id)
                 last_id = vid_id
                 log("Rutube", f"📌 Последнее видео: #{vid_id}. Жду новые...")
-
     while True:
         time.sleep(RUTUBE_CHECK_INTERVAL)
         try:
             videos = get_rutube_videos()
             if not videos:
-                log("Rutube", "⚠️  Видео не найдены")
                 continue
-
             new_videos = []
             for video in videos:
                 vid_id = str(video.get("id") or video.get("uuid") or "")
@@ -215,42 +213,94 @@ def rutube_bot():
                     new_videos.append(video)
                 else:
                     break
-
             if new_videos:
                 log("Rutube", f"🆕 Новых видео: {len(new_videos)}")
                 latest_id = str(videos[0].get("id") or videos[0].get("uuid") or "")
                 for video in new_videos:
                     vid_id = str(video.get("id") or video.get("uuid") or "")
                     vid_url = f"https://rutube.ru/video/{vid_id}/"
-                    title = video.get("title", "")
-                    log("Rutube", f"🆕 {title[:50]} | {vid_url}")
+                    log("Rutube", f"🆕 {video.get('title','')[:50]} | {vid_url}")
                     create_jap_order("Rutube", vid_url, RUTUBE_SERVICE, RUTUBE_QTY_MIN, RUTUBE_QTY_MAX)
                     time.sleep(2)
                 save_state("last_rutube_id.txt", latest_id)
                 last_id = latest_id
             else:
                 log("Rutube", f"🔍 Нет новых видео (последнее: #{last_id})")
-
         except Exception as e:
             log("Rutube", f"❌ Ошибка: {e}")
+
+# ══════════════════════════════════════
+#  FACEBOOK
+# ══════════════════════════════════════
+def get_fb_post():
+    try:
+        resp = requests.get(FB_PAGE_URL, headers=FB_HEADERS, timeout=15)
+        log("Facebook", f"📥 Status: {resp.status_code}")
+        if resp.status_code != 200:
+            return None, None
+        html = resp.content.decode("utf-8", errors="ignore")
+        matches = re.findall(r'pfbid[A-Za-z0-9]+', html)
+        if matches:
+            latest = matches[0]
+            post_url = f"https://www.facebook.com/permalink.php?story_fbid={latest}&id=100081997113052"
+            log("Facebook", f"✅ Пост (pfbid): {post_url}")
+            return latest, post_url
+        all_ids = []
+        for pattern in [r'"story_fbid":"(\d+)"', r'"top_level_post_id":"(\d+)"', r'"post_id":"(\d+)"']:
+            all_ids += re.findall(pattern, html)
+        numeric = [x for x in set(all_ids) if x.isdigit() and len(x) > 10]
+        if numeric:
+            latest_id = max(numeric, key=lambda x: int(x))
+            post_url = f"https://www.facebook.com/permalink.php?story_fbid={latest_id}&id=100081997113052"
+            log("Facebook", f"✅ Пост: {post_url}")
+            return latest_id, post_url
+        log("Facebook", f"⚠️  Посты не найдены | HTML: {html[:200]}")
+        return None, None
+    except Exception as e:
+        log("Facebook", f"❌ Ошибка: {e}")
+        return None, None
+
+def facebook_bot():
+    log("Facebook", f"📘 Запущен | Услуга: {FB_SERVICE} | {FB_QTY_MIN}-{FB_QTY_MAX}")
+    last_id = load_state("last_fb_post_id.txt")
+    if not last_id:
+        latest_id, _ = get_fb_post()
+        if latest_id:
+            save_state("last_fb_post_id.txt", latest_id)
+            last_id = latest_id
+            log("Facebook", f"📌 Последний пост: #{latest_id}. Жду новые...")
+    while True:
+        time.sleep(FB_CHECK_INTERVAL)
+        try:
+            latest_id, post_url = get_fb_post()
+            if latest_id and latest_id != last_id:
+                log("Facebook", f"🆕 Новый пост: {post_url}")
+                create_jap_order("Facebook", post_url, FB_SERVICE, FB_QTY_MIN, FB_QTY_MAX)
+                save_state("last_fb_post_id.txt", latest_id)
+                last_id = latest_id
+            else:
+                log("Facebook", f"🔍 Нет новых постов (последний: #{last_id})")
+        except Exception as e:
+            log("Facebook", f"❌ Ошибка: {e}")
 
 # ══════════════════════════════════════
 #  MAIN
 # ══════════════════════════════════════
 def main():
-    log("MAIN", "🚀 VK + Rutube бот запущен!")
+    log("MAIN", "🚀 VK + Rutube + Facebook бот запущен!")
     check_balance()
 
     threads = [
         threading.Thread(target=vk_bot, name="VK", daemon=True),
         threading.Thread(target=rutube_bot, name="Rutube", daemon=True),
+        threading.Thread(target=facebook_bot, name="Facebook", daemon=True),
     ]
 
     for t in threads:
         t.start()
         time.sleep(3)
 
-    log("MAIN", "✅ Оба бота запущены! VK + Rutube")
+    log("MAIN", "✅ Все 3 бота запущены! VK + Rutube + Facebook")
 
     while True:
         time.sleep(3600)
