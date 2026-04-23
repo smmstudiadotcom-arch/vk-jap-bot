@@ -34,9 +34,9 @@ RUTUBE_QTY_MAX        = 1200
 RUTUBE_CHECK_INTERVAL = 60
 
 # ══════════════════════════════════════
-#  FACEBOOK (cookies)
+#  FACEBOOK (мобильная версия)
 # ══════════════════════════════════════
-FB_PAGE_URL       = "https://www.facebook.com/profile.php?id=100081997113052"
+FB_PAGE_URL       = "https://m.facebook.com/profile.php?id=100081997113052"
 FB_SERVICE        = 9604
 FB_QTY_MIN        = 500
 FB_QTY_MAX        = 1000
@@ -47,12 +47,12 @@ DATR   = "gvGqaR00HB8BBQCtWvA_ZrBw"
 FR     = "1fXp7RjNu6E4tlLeA.AWc5dZieQn71hppDlUvFZLqzKA5QYrGNQzKXlgvHvbeVm7zLhgs.Bp6coy..AAA.0.0.Bp6coy.AWeEM5yj4-p0pnZr32HrLye4l9I"
 SB     = "hfGqaZIWmBX2PQV9iqh9Tr1V"
 FB_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
     "Cookie": f"c_user={C_USER}; xs={XS}; datr={DATR}; fr={FR}; sb={SB}; ps_l=1; ps_n=1",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
     "Accept-Encoding": "identity",
-    "Referer": "https://www.facebook.com/",
+    "Referer": "https://m.facebook.com/",
 }
 
 def log(platform, msg):
@@ -230,23 +230,28 @@ def rutube_bot():
             log("Rutube", f"❌ Ошибка: {e}")
 
 # ══════════════════════════════════════
-#  FACEBOOK
+#  FACEBOOK (мобильная версия)
 # ══════════════════════════════════════
 def get_fb_post():
     try:
         resp = requests.get(FB_PAGE_URL, headers=FB_HEADERS, timeout=15)
         log("Facebook", f"📥 Status: {resp.status_code}")
         if resp.status_code != 200:
+            log("Facebook", f"❌ HTML: {resp.content[:200]}")
             return None, None
         html = resp.content.decode("utf-8", errors="ignore")
+
+        # pfbid pattern
         matches = re.findall(r'pfbid[A-Za-z0-9]+', html)
         if matches:
             latest = matches[0]
             post_url = f"https://www.facebook.com/permalink.php?story_fbid={latest}&id=100081997113052"
             log("Facebook", f"✅ Пост (pfbid): {post_url}")
             return latest, post_url
+
+        # story_fbid patterns
         all_ids = []
-        for pattern in [r'"story_fbid":"(\d+)"', r'"top_level_post_id":"(\d+)"', r'"post_id":"(\d+)"']:
+        for pattern in [r'"story_fbid":"(\d+)"', r'story_fbid=(\d+)', r'"top_level_post_id":"(\d+)"']:
             all_ids += re.findall(pattern, html)
         numeric = [x for x in set(all_ids) if x.isdigit() and len(x) > 10]
         if numeric:
@@ -254,14 +259,15 @@ def get_fb_post():
             post_url = f"https://www.facebook.com/permalink.php?story_fbid={latest_id}&id=100081997113052"
             log("Facebook", f"✅ Пост: {post_url}")
             return latest_id, post_url
-        log("Facebook", f"⚠️  Посты не найдены | HTML: {html[:200]}")
+
+        log("Facebook", f"⚠️  Посты не найдены | HTML: {html[:300]}")
         return None, None
     except Exception as e:
         log("Facebook", f"❌ Ошибка: {e}")
         return None, None
 
 def facebook_bot():
-    log("Facebook", f"📘 Запущен | Услуга: {FB_SERVICE} | {FB_QTY_MIN}-{FB_QTY_MAX}")
+    log("Facebook", f"📘 Запущен (мобильная) | Услуга: {FB_SERVICE} | {FB_QTY_MIN}-{FB_QTY_MAX}")
     last_id = load_state("last_fb_post_id.txt")
     if not last_id:
         latest_id, _ = get_fb_post()
