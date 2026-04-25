@@ -33,6 +33,33 @@ RUTUBE_QTY_MIN        = 500
 RUTUBE_QTY_MAX        = 1200
 RUTUBE_CHECK_INTERVAL = 60
 
+# ══════════════════════════════════════
+#  TWITTER
+# ══════════════════════════════════════
+TW_USERNAME    = "gowithRussia"
+TW_SERVICE     = 1334
+TW_QTY_MIN     = 800
+TW_QTY_MAX     = 1500
+TW_CHECK_INTERVAL = 60
+
+TW_AUTH_TOKEN = "2dbd598ed7dac67ddcf07976325dbb708dd9e6e2"
+TW_CT0        = "6b8b1822c5336aefde2892739247be0e645995eaa5f47fd6a99d109eb76596096ea8d667f91cc1c0021cd3afb84668920f8a01c06bd449302c70631c72a184816a16d96d8852c0d4b03c1aa75f4de043"
+
+TW_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
+    "Cookie": f"auth_token={TW_AUTH_TOKEN}; ct0={TW_CT0}",
+    "X-Csrf-Token": TW_CT0,
+    "X-Twitter-Auth-Type": "OAuth2Session",
+    "X-Twitter-Active-User": "yes",
+    "X-Twitter-Client-Language": "en",
+    "Content-Type": "application/json",
+    "Referer": "https://x.com/",
+}
+
+# ══════════════════════════════════════
+#  УТИЛИТЫ
+# ══════════════════════════════════════
 def log(platform, msg):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{ts}] [{platform}] {msg}", flush=True)
@@ -208,22 +235,109 @@ def rutube_bot():
             log("Rutube", f"❌ Ошибка: {e}")
 
 # ══════════════════════════════════════
+#  TWITTER
+# ══════════════════════════════════════
+def get_twitter_user_id():
+    url = "https://api.x.com/graphql/G3KGOASz96M-Qu0nwmGXNg/UserByScreenName"
+    params = {
+        "variables": f'{{"screen_name":"{TW_USERNAME}","withSafetyModeUserFields":true}}',
+        "features": '{"hidden_profile_subscriptions_enabled":true,"rweb_tipjar_consumption_enabled":true,"responsive_web_graphql_exclude_directive_enabled":true,"verified_phone_label_enabled":false,"subscriptions_verification_info_is_identity_verified_enabled":true,"subscriptions_verification_info_verified_since_enabled":true,"highlights_tweets_tab_ui_enabled":true,"responsive_web_twitter_article_notes_tab_enabled":true,"subscriptions_feature_can_gift_premium":false,"creator_subscriptions_tweet_preview_api_enabled":true,"responsive_web_graphql_skip_user_profile_image_extensions_enabled":false,"responsive_web_graphql_timeline_navigation_enabled":true}',
+    }
+    resp = requests.get(url, headers=TW_HEADERS, params=params, timeout=15)
+    log("Twitter", f"📥 UserByScreenName: {resp.status_code}")
+    if resp.status_code != 200:
+        log("Twitter", f"⚠️  Ошибка user ID: {resp.text[:200]}")
+        return None
+    data = resp.json()
+    user_id = data["data"]["user"]["result"]["rest_id"]
+    log("Twitter", f"✅ User ID: {user_id}")
+    return user_id
+
+def get_latest_tweet(user_id):
+    url = "https://api.x.com/graphql/E3opETHurmVJflFsUBVuUQ/UserTweets"
+    params = {
+        "variables": f'{{"userId":"{user_id}","count":5,"includePromotedContent":true,"withQuickPromoteEligibilityTweetFields":true,"withVoice":true,"withV2Timeline":true}}',
+        "features": '{"rweb_tipjar_consumption_enabled":true,"responsive_web_graphql_exclude_directive_enabled":true,"verified_phone_label_enabled":false,"creator_subscriptions_tweet_preview_api_enabled":true,"responsive_web_graphql_timeline_navigation_enabled":true,"responsive_web_graphql_skip_user_profile_image_extensions_enabled":false,"communities_web_enable_tweet_community_results_fetch":true,"c9s_tweet_anatomy_moderator_badge_enabled":true,"articles_preview_enabled":true,"responsive_web_edit_tweet_api_enabled":true,"graphql_is_translatable_rweb_tweet_is_translatable_enabled":true,"view_counts_everywhere_api_enabled":true,"longform_notetweets_consumption_enabled":true,"responsive_web_twitter_article_tweet_consumption_enabled":true,"tweet_awards_web_tipping_enabled":false,"creator_subscriptions_quote_tweet_preview_enabled":false,"freedom_of_speech_not_reach_fetch_enabled":true,"standardized_nudges_misinfo":true,"tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled":true,"rweb_video_timestamps_enabled":true,"longform_notetweets_rich_text_read_enabled":true,"longform_notetweets_inline_media_enabled":true,"responsive_web_enhance_cards_enabled":false}',
+    }
+    resp = requests.get(url, headers=TW_HEADERS, params=params, timeout=15)
+    log("Twitter", f"📥 UserTweets: {resp.status_code}")
+    if resp.status_code != 200:
+        log("Twitter", f"⚠️  Ошибка твитов: {resp.text[:200]}")
+        return None, None
+    data = resp.json()
+    entries = data["data"]["user"]["result"]["timeline_v2"]["timeline"]["instructions"]
+    tweet_ids = []
+    for instruction in entries:
+        if instruction.get("type") == "TimelineAddEntries":
+            for entry in instruction.get("entries", []):
+                entry_id = entry.get("entryId", "")
+                if entry_id.startswith("tweet-"):
+                    tid = entry_id.replace("tweet-", "")
+                    tweet_ids.append(tid)
+    if not tweet_ids:
+        log("Twitter", "⚠️  Твиты не найдены")
+        return None, None
+    latest_id = max(tweet_ids, key=lambda x: int(x))
+    tweet_url = f"https://x.com/{TW_USERNAME}/status/{latest_id}"
+    log("Twitter", f"✅ Последний твит: {tweet_url}")
+    return latest_id, tweet_url
+
+def twitter_bot():
+    log("Twitter", f"🐦 Запущен | @{TW_USERNAME} | Услуга: {TW_SERVICE} | {TW_QTY_MIN}-{TW_QTY_MAX}")
+
+    user_id = None
+    while not user_id:
+        try:
+            user_id = get_twitter_user_id()
+        except Exception as e:
+            log("Twitter", f"❌ Ошибка получения user ID: {e}")
+        if not user_id:
+            log("Twitter", "⏳ Повтор через 30 сек...")
+            time.sleep(30)
+
+    last_id = load_state("last_tweet_id.txt")
+    if not last_id:
+        try:
+            latest_id, _ = get_latest_tweet(user_id)
+            if latest_id:
+                save_state("last_tweet_id.txt", latest_id)
+                last_id = latest_id
+                log("Twitter", f"📌 Последний твит: #{latest_id}. Жду новые...")
+        except Exception as e:
+            log("Twitter", f"❌ Ошибка: {e}")
+
+    while True:
+        time.sleep(TW_CHECK_INTERVAL)
+        try:
+            latest_id, tweet_url = get_latest_tweet(user_id)
+            if latest_id and last_id and int(latest_id) > int(last_id):
+                log("Twitter", f"🆕 Новый твит: {tweet_url}")
+                create_jap_order("Twitter", tweet_url, TW_SERVICE, TW_QTY_MIN, TW_QTY_MAX)
+                save_state("last_tweet_id.txt", latest_id)
+                last_id = latest_id
+            else:
+                log("Twitter", f"🔍 Нет новых твитов (последний: #{last_id})")
+        except Exception as e:
+            log("Twitter", f"❌ Ошибка: {e}")
+
+# ══════════════════════════════════════
 #  MAIN
 # ══════════════════════════════════════
 def main():
-    log("MAIN", "🚀 VK + Rutube бот запущен!")
+    log("MAIN", "🚀 VK + Rutube + Twitter бот запущен!")
     check_balance()
 
     threads = [
-        threading.Thread(target=vk_bot, name="VK", daemon=True),
-        threading.Thread(target=rutube_bot, name="Rutube", daemon=True),
+        threading.Thread(target=vk_bot,      name="VK",      daemon=True),
+        threading.Thread(target=rutube_bot,   name="Rutube",  daemon=True),
+        threading.Thread(target=twitter_bot,  name="Twitter", daemon=True),
     ]
 
     for t in threads:
         t.start()
         time.sleep(3)
 
-    log("MAIN", "✅ Оба бота запущены! VK + Rutube")
+    log("MAIN", "✅ Все 3 бота запущены! VK + Rutube + Twitter")
 
     while True:
         time.sleep(3600)
