@@ -4,31 +4,25 @@ import time
 import os
 import re
 import threading
-import redis
 from datetime import datetime
 
 # ══════════════════════════════════════
 #  JAP
 # ══════════════════════════════════════
-JAP_API_KEY = os.environ.get("JAP_KEY", "ec2fb6c8f5a4ea7ba6cf532e87a09895")
+JAP_API_KEY = "ec2fb6c8f5a4ea7ba6cf532e87a09895"
 JAP_API_URL = "https://justanotherpanel.com/api/v2"
-
-# ══════════════════════════════════════
-#  SCRAPERAPI
-# ══════════════════════════════════════
-SCRAPER_API_KEY = os.environ.get("SCRAPER_API_KEY", "9d538a4836e83b0ff52157ccfe3aca8b")
 
 # ══════════════════════════════════════
 #  VKONTAKTE
 # ══════════════════════════════════════
-VK_TOKEN          = os.environ.get("VK_TOKEN", "vk1.a.3l-M4WzpxupxkQ1LO5QEJKxhXtlyzgP6m9f7UnUXmtmOCGTp8Pj26J5cdb_hPqB8-wSrFsRTgUVIwcwZQK6iL-cx8p23NQnt65AcdJ1yWNnqj21ZKOWnSrPyKiUudvEjdCQjzBNoDSF2vq6AjPKbPtvP-kOGAo28Uhiet66MoYaXUU9UktA3zGcZfrf7V0nKu7eUkOqnHAU9a-GcfGIW0Q")
+VK_TOKEN          = "vk1.a.3l-M4WzpxupxkQ1LO5QEJKxhXtlyzgP6m9f7UnUXmtmOCGTp8Pj26J5cdb_hPqB8-wSrFsRTgUVIwcwZQK6iL-cx8p23NQnt65AcdJ1yWNnqj21ZKOWnSrPyKiUudvEjdCQjzBNoDSF2vq6AjPKbPtvP-kOGAo28Uhiet66MoYaXUU9UktA3zGcZfrf7V0nKu7eUkOqnHAU9a-GcfGIW0Q"
 VK_API_URL        = "https://api.vk.com/method"
 VK_VERSION        = "5.131"
 VK_SERVICE        = 3756
 VK_QTY_MIN        = 20
 VK_QTY_MAX        = 35
 VK_PAGES          = ["biznes___13"]
-VK_CHECK_INTERVAL = 3600  # каждый час
+VK_CHECK_INTERVAL = 60
 
 # ══════════════════════════════════════
 #  RUTUBE
@@ -37,52 +31,38 @@ RUTUBE_CHANNEL_ID     = "56184868"
 RUTUBE_SERVICE        = 9777
 RUTUBE_QTY_MIN        = 500
 RUTUBE_QTY_MAX        = 1200
-RUTUBE_CHECK_INTERVAL = 3600  # каждый час
-
-# ══════════════════════════════════════
-#  FACEBOOK — REELS (ScraperAPI)
-# ══════════════════════════════════════
-FB_PAGE_ID        = "100081997113052"
-FB_REELS_SERVICE  = 9604
-FB_REELS_QTY_MIN  = 500
-FB_REELS_QTY_MAX  = 1000
-FB_REELS_INTERVAL = 3600  # каждый час
-
-# ══════════════════════════════════════
-#  УТИЛИТЫ
-# ══════════════════════════════════════
-
-# Redis — постоянное хранилище (не теряется при рестарте)
-REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
-r = redis.from_url(REDIS_URL, decode_responses=True)
+RUTUBE_CHECK_INTERVAL = 60
 
 def log(platform, msg):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{ts}] [{platform}] {msg}", flush=True)
 
-def load_state(key):
-    return r.get(key)
+def load_state(filename):
+    if os.path.exists(filename):
+        with open(filename, "r") as f:
+            val = f.read().strip()
+            return val if val else None
+    return None
 
-def save_state(key, value):
-    r.set(key, str(value))
+def load_state_dict(filename):
+    if os.path.exists(filename):
+        with open(filename, "r") as f:
+            data = {}
+            for line in f.read().strip().split("\n"):
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    data[k] = v
+            return data
+    return {}
 
-def load_state_dict(key):
-    data = r.hgetall(key)
-    return data if data else {}
+def save_state(filename, value):
+    with open(filename, "w") as f:
+        f.write(str(value))
 
-def save_state_dict(key, data):
-    if data:
-        r.delete(key)
-        r.hset(key, mapping=data)
-
-def is_in_set(key, value):
-    return r.sismember(key, value)
-
-def add_to_set(key, value):
-    r.sadd(key, value)
-
-def get_set(key):
-    return r.smembers(key)
+def save_state_dict(filename, data):
+    with open(filename, "w") as f:
+        for k, v in data.items():
+            f.write(f"{k}={v}\n")
 
 def create_jap_order(platform, link, service, qty_min, qty_max):
     quantity = random.randint(qty_min, qty_max)
@@ -96,7 +76,7 @@ def create_jap_order(platform, link, service, qty_min, qty_max):
             return
         data = resp.json()
         if "order" in data:
-            log(platform, f"✅ Заказ #{data['order']} | Услуга: {service} | Кол-во: {quantity}")
+            log(platform, f"✅ Заказ! ID: {data['order']} | Услуга: {service} | Кол-во: {quantity}")
         elif "error" in data:
             log(platform, f"❌ JAP ошибка: {data['error']}")
     except Exception as e:
@@ -108,7 +88,7 @@ def check_balance():
         if resp.text.strip():
             data = resp.json()
             if "balance" in data:
-                log("JAP", f"💰 Баланс: ${data['balance']} {data.get('currency', '')}")
+                log("JAP", f"💰 Баланс: ${data['balance']} {data.get('currency','')}")
     except Exception as e:
         log("JAP", f"❌ Ошибка баланса: {e}")
 
@@ -143,14 +123,14 @@ def get_vk_post(page_slug):
 
 def vk_bot():
     log("VK", f"📱 Запущен | Страницы: {VK_PAGES} | Услуга: {VK_SERVICE} | {VK_QTY_MIN}-{VK_QTY_MAX}")
-    state = load_state_dict("vk:last_posts")
+    state = load_state_dict("vk_last_posts.txt")
     for page in VK_PAGES:
         if page not in state:
             post_id, _ = get_vk_post(page)
             if post_id:
                 state[page] = post_id
                 log("VK", f"📌 @{page} — последний пост: #{post_id}. Жду новые...")
-    save_state_dict("vk:last_posts", state)
+    save_state_dict("vk_last_posts.txt", state)
     while True:
         time.sleep(VK_CHECK_INTERVAL)
         try:
@@ -163,7 +143,7 @@ def vk_bot():
                     log("VK", f"🆕 Новый пост @{page}: {post_url}")
                     create_jap_order("VK", post_url, VK_SERVICE, VK_QTY_MIN, VK_QTY_MAX)
                     state[page] = latest_id
-                    save_state_dict("vk:last_posts", state)
+                    save_state_dict("vk_last_posts.txt", state)
                 else:
                     log("VK", f"🔍 @{page} — нет новых постов (последний: #{last_id})")
         except Exception as e:
@@ -189,13 +169,13 @@ def get_rutube_videos():
 
 def rutube_bot():
     log("Rutube", f"📺 Запущен | Channel: {RUTUBE_CHANNEL_ID} | Услуга: {RUTUBE_SERVICE} | {RUTUBE_QTY_MIN}-{RUTUBE_QTY_MAX}")
-    last_id = load_state("rutube:last_id")
+    last_id = load_state("last_rutube_id.txt")
     if not last_id:
         videos = get_rutube_videos()
         if videos:
             vid_id = str(videos[0].get("id") or videos[0].get("uuid") or "")
             if vid_id:
-                save_state("rutube:last_id", vid_id)
+                save_state("last_rutube_id.txt", vid_id)
                 last_id = vid_id
                 log("Rutube", f"📌 Последнее видео: #{vid_id}. Жду новые...")
     while True:
@@ -217,10 +197,10 @@ def rutube_bot():
                 for video in new_videos:
                     vid_id = str(video.get("id") or video.get("uuid") or "")
                     vid_url = f"https://rutube.ru/video/{vid_id}/"
-                    log("Rutube", f"🆕 {video.get('title', '')[:50]} | {vid_url}")
+                    log("Rutube", f"🆕 {video.get('title','')[:50]} | {vid_url}")
                     create_jap_order("Rutube", vid_url, RUTUBE_SERVICE, RUTUBE_QTY_MIN, RUTUBE_QTY_MAX)
                     time.sleep(2)
-                save_state("rutube:last_id", latest_id)
+                save_state("last_rutube_id.txt", latest_id)
                 last_id = latest_id
             else:
                 log("Rutube", f"🔍 Нет новых видео (последнее: #{last_id})")
@@ -228,86 +208,22 @@ def rutube_bot():
             log("Rutube", f"❌ Ошибка: {e}")
 
 # ══════════════════════════════════════
-#  FACEBOOK — REELS (ScraperAPI)
-# ══════════════════════════════════════
-def fetch_fb_reels():
-    target_url = f"https://www.facebook.com/{FB_PAGE_ID}/reels"
-    scraper_url = f"http://api.scraperapi.com/?api_key={SCRAPER_API_KEY}&url={requests.utils.quote(target_url)}&render=true&country_code=us"
-    log("FB-Reels", f"🔄 ScraperAPI запрос...")
-    try:
-        resp = requests.get(scraper_url, timeout=60)
-        log("FB-Reels", f"📥 Status: {resp.status_code} | HTML: {len(resp.text)} символов")
-        html = resp.text
-
-        urls = set()
-
-        # Паттерн 1: прямые ссылки на Reels
-        for match in re.finditer(r'https://www\.facebook\.com/reel/(\d+)', html):
-            urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
-
-        # Паттерн 2: video_id в JSON
-        for match in re.finditer(r'"video_id":"(\d{10,})"', html):
-            urls.add(f"https://www.facebook.com/watch/?v={match.group(1)}")
-
-        # Паттерн 3: /videos/ ссылки
-        for match in re.finditer(r'href="(/[^"]+/videos/(\d+)[^"]*)"', html):
-            urls.add(f"https://www.facebook.com{match.group(1)}")
-
-        log("FB-Reels", f"🎬 Найдено Reels: {len(urls)}")
-        return list(urls)
-    except Exception as e:
-        log("FB-Reels", f"❌ Ошибка ScraperAPI: {e}")
-        return []
-
-def facebook_reels_bot():
-    log("FB-Reels", f"🎬 Запущен (ScraperAPI) | Услуга: {FB_REELS_SERVICE} | {FB_REELS_QTY_MIN}-{FB_REELS_QTY_MAX}")
-
-    # Первый запуск — запоминаем существующие Reels, не крутим
-    existing = get_set("fb:processed_reels")
-    if not existing:
-        log("FB-Reels", "📌 Первый запуск — запоминаю существующие Reels...")
-        reels = fetch_fb_reels()
-        if reels:
-            for reel_url in reels:
-                add_to_set("fb:processed_reels", reel_url)
-            log("FB-Reels", f"📌 Запомнено {len(reels)} Reels. Жду новые...")
-
-    while True:
-        time.sleep(FB_REELS_INTERVAL)
-        try:
-            reels = fetch_fb_reels()
-            new_reels = [url for url in reels if not is_in_set("fb:processed_reels", url)]
-
-            if new_reels:
-                log("FB-Reels", f"🆕 Новых Reels: {len(new_reels)}")
-                for reel_url in new_reels:
-                    log("FB-Reels", f"🆕 {reel_url}")
-                    create_jap_order("FB-Reels", reel_url, FB_REELS_SERVICE, FB_REELS_QTY_MIN, FB_REELS_QTY_MAX)
-                    add_to_set("fb:processed_reels", reel_url)
-                    time.sleep(2)
-            else:
-                log("FB-Reels", f"🔍 Нет новых Reels")
-        except Exception as e:
-            log("FB-Reels", f"❌ Ошибка: {e}")
-
-# ══════════════════════════════════════
 #  MAIN
 # ══════════════════════════════════════
 def main():
-    log("MAIN", "🚀 Общий бот запущен: VK + Rutube + FB-Reels")
+    log("MAIN", "🚀 VK + Rutube бот запущен!")
     check_balance()
 
     threads = [
-        threading.Thread(target=vk_bot,            name="VK",       daemon=True),
-        threading.Thread(target=rutube_bot,         name="Rutube",   daemon=True),
-        threading.Thread(target=facebook_reels_bot, name="FB-Reels", daemon=True),
+        threading.Thread(target=vk_bot, name="VK", daemon=True),
+        threading.Thread(target=rutube_bot, name="Rutube", daemon=True),
     ]
 
     for t in threads:
         t.start()
         time.sleep(3)
 
-    log("MAIN", "✅ Все 3 бота запущены!")
+    log("MAIN", "✅ Оба бота запущены! VK + Rutube")
 
     while True:
         time.sleep(3600)
