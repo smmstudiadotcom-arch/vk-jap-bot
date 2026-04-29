@@ -19,9 +19,15 @@ VK_TOKEN          = "vk1.a.3l-M4WzpxupxkQ1LO5QEJKxhXtlyzgP6m9f7UnUXmtmOCGTp8Pj26
 VK_API_URL        = "https://api.vk.com/method"
 VK_VERSION        = "5.131"
 VK_SERVICE        = 3756
-VK_QTY_MIN        = 20
-VK_QTY_MAX        = 35
-VK_PAGES          = ["biznes___13"]
+VK_QTY_MIN        = 80
+VK_QTY_MAX        = 110
+VK_PAGES          = [
+    "biznes___13",
+    "public218647080",
+    "partner_bf_anna_maria",
+    "meropriyatiya_bf_anna_maria",
+    "fond_anna_maria"
+]
 VK_CHECK_INTERVAL = 60
 
 # ══════════════════════════════════════
