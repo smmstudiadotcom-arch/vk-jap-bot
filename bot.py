@@ -19,16 +19,22 @@ VK_TOKEN          = "vk1.a.3l-M4WzpxupxkQ1LO5QEJKxhXtlyzgP6m9f7UnUXmtmOCGTp8Pj26
 VK_API_URL        = "https://api.vk.com/method"
 VK_VERSION        = "5.131"
 VK_SERVICE        = 3756
-VK_QTY_MIN        = 80
-VK_QTY_MAX        = 110
-VK_PAGES          = [
-    "biznes___13",
+VK_CHECK_INTERVAL = 60
+
+# Группа 1: biznes___13 (лайки 20-35)
+VK_GROUP1_PAGES   = ["biznes___13"]
+VK_GROUP1_QTY_MIN = 20
+VK_GROUP1_QTY_MAX = 35
+
+# Группа 2: остальные страницы (просмотры 80-110)
+VK_GROUP2_PAGES   = [
     "public218647080",
     "partner_bf_anna_maria",
     "meropriyatiya_bf_anna_maria",
     "fond_anna_maria"
 ]
-VK_CHECK_INTERVAL = 60
+VK_GROUP2_QTY_MIN = 80
+VK_GROUP2_QTY_MAX = 110
 
 # ══════════════════════════════════════
 #  RUTUBE
@@ -155,26 +161,37 @@ def get_vk_post(page_slug):
         return None, None
 
 def vk_bot():
-    log("VK", f"📱 Запущен | Страницы: {VK_PAGES} | Услуга: {VK_SERVICE} | {VK_QTY_MIN}-{VK_QTY_MAX}")
+    all_pages = VK_GROUP1_PAGES + VK_GROUP2_PAGES
+    log("VK", f"📱 Запущен | Группа1 (20-35): {VK_GROUP1_PAGES} | Группа2 (80-110): {VK_GROUP2_PAGES}")
     state = load_state_dict("vk_last_posts.txt")
-    for page in VK_PAGES:
+    
+    # Инициализация для всех страниц
+    for page in all_pages:
         if page not in state:
             post_id, _ = get_vk_post(page)
             if post_id:
                 state[page] = post_id
                 log("VK", f"📌 @{page} — последний пост: #{post_id}. Жду новые...")
     save_state_dict("vk_last_posts.txt", state)
+    
     while True:
         time.sleep(VK_CHECK_INTERVAL)
         try:
-            for page in VK_PAGES:
+            for page in all_pages:
                 latest_id, post_url = get_vk_post(page)
                 if not latest_id:
                     continue
                 last_id = state.get(page)
                 if latest_id != last_id:
                     log("VK", f"🆕 Новый пост @{page}: {post_url}")
-                    create_jap_order("VK", post_url, VK_SERVICE, VK_QTY_MIN, VK_QTY_MAX)
+                    
+                    # Определяем диапазон для страницы
+                    if page in VK_GROUP1_PAGES:
+                        qty_min, qty_max = VK_GROUP1_QTY_MIN, VK_GROUP1_QTY_MAX
+                    else:
+                        qty_min, qty_max = VK_GROUP2_QTY_MIN, VK_GROUP2_QTY_MAX
+                    
+                    create_jap_order("VK", post_url, VK_SERVICE, qty_min, qty_max)
                     state[page] = latest_id
                     save_state_dict("vk_last_posts.txt", state)
                 else:
