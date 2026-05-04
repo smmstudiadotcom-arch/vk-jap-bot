@@ -78,6 +78,15 @@ TW_HEADERS = {
 }
 
 # ══════════════════════════════════════
+#  DZEN
+# ══════════════════════════════════════
+DZEN_CHANNEL_URL    = "https://dzen.ru/id/68086a847e921507147f4287"
+DZEN_SERVICE        = 6448
+DZEN_QTY_MIN        = 30
+DZEN_QTY_MAX        = 61
+DZEN_CHECK_INTERVAL = 60
+
+# ══════════════════════════════════════
 #  УТИЛИТЫ
 # ══════════════════════════════════════
 def log(platform, msg):
@@ -356,23 +365,93 @@ def twitter_bot():
             log("Twitter", f"❌ Ошибка: {e}")
 
 # ══════════════════════════════════════
+#  DZEN
+# ══════════════════════════════════════
+def get_dzen_posts():
+    try:
+        # Dzen RSS feed
+        rss_url = f"{DZEN_CHANNEL_URL}?rss=true"
+        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+        resp = requests.get(rss_url, headers=headers, timeout=15)
+        log("Dzen", f"📥 RSS: {resp.status_code}")
+        if resp.status_code != 200:
+            return []
+        
+        # Парсим RSS — ищем <link> внутри <item>
+        # Простой regex парсер (избегаем зависимости от feedparser)
+        items = re.findall(r'<item>(.*?)</item>', resp.text, re.DOTALL)
+        posts = []
+        for item in items:
+            link_match = re.search(r'<link>(.*?)</link>', item)
+            title_match = re.search(r'<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>', item)
+            if link_match:
+                link = link_match.group(1).strip()
+                title = title_match.group(1).strip() if title_match else ""
+                posts.append({"link": link, "title": title})
+        log("Dzen", f"📊 Найдено постов: {len(posts)}")
+        return posts
+    except Exception as e:
+        log("Dzen", f"❌ Ошибка: {e}")
+        return []
+
+def dzen_bot():
+    log("Dzen", f"📰 Запущен | Канал: {DZEN_CHANNEL_URL} | Услуга: {DZEN_SERVICE} | {DZEN_QTY_MIN}-{DZEN_QTY_MAX}")
+    last_link = load_state("last_dzen_link.txt")
+    
+    if not last_link:
+        posts = get_dzen_posts()
+        if posts:
+            last_link = posts[0]["link"]
+            save_state("last_dzen_link.txt", last_link)
+            log("Dzen", f"📌 Последний пост: {last_link}. Жду новые...")
+    
+    while True:
+        time.sleep(DZEN_CHECK_INTERVAL)
+        try:
+            posts = get_dzen_posts()
+            if not posts:
+                continue
+            
+            new_posts = []
+            for post in posts:
+                if post["link"] != last_link:
+                    new_posts.append(post)
+                else:
+                    break
+            
+            if new_posts:
+                log("Dzen", f"🆕 Новых постов: {len(new_posts)}")
+                latest_link = posts[0]["link"]
+                for post in new_posts:
+                    log("Dzen", f"🆕 {post['title'][:50]} | {post['link']}")
+                    create_jap_order("Dzen", post["link"], DZEN_SERVICE, DZEN_QTY_MIN, DZEN_QTY_MAX)
+                    time.sleep(2)
+                save_state("last_dzen_link.txt", latest_link)
+                last_link = latest_link
+            else:
+                log("Dzen", f"🔍 Нет новых постов")
+        except Exception as e:
+            log("Dzen", f"❌ Ошибка: {e}")
+
+# ══════════════════════════════════════
 #  MAIN
 # ══════════════════════════════════════
 def main():
-    log("MAIN", "🚀 VK + Rutube + Twitter бот запущен!")
+    log("MAIN", "🚀 VK + Rutube + Twitter + Dzen бот запущен!")
     check_balance()
 
     threads = [
         threading.Thread(target=vk_bot,      name="VK",      daemon=True),
         threading.Thread(target=rutube_bot,   name="Rutube",  daemon=True),
         threading.Thread(target=twitter_bot,  name="Twitter", daemon=True),
+        threading.Thread(target=dzen_bot,     name="Dzen",    daemon=True),
     ]
 
     for t in threads:
         t.start()
         time.sleep(3)
 
-    log("MAIN", "✅ Все 3 бота запущены! VK + Rutube + Twitter")
+    log("MAIN", "✅ Все 4 бота запущены! VK + Rutube + Twitter + Dzen")
 
     while True:
         time.sleep(3600)
