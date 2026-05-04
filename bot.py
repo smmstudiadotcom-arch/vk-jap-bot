@@ -87,11 +87,14 @@ DZEN_QTY_MAX        = 61
 DZEN_CHECK_INTERVAL = 60
 
 # Yandex cookies для Dzen
-DZEN_YANDEX_LOGIN = os.environ.get("DZEN_YANDEX_LOGIN", "avaavax2")
-DZEN_YANDEXUID    = os.environ.get("DZEN_YANDEXUID",    "5972834741777345845")
-DZEN_YS           = os.environ.get("DZEN_YS",           "udn.cDpTTU0gU3R1ZGlh#c_chck.3966839074")
-DZEN_VID          = os.environ.get("DZEN_VID",          "9568a88486a81305")
-DZEN_SSO_STATUS   = os.environ.get("DZEN_SSO_STATUS",   "sso.passport.yandex.ru:synchronized")
+DZEN_YANDEX_LOGIN    = os.environ.get("DZEN_YANDEX_LOGIN",    "avaavax2")
+DZEN_YANDEXUID       = os.environ.get("DZEN_YANDEXUID",       "5972834741777345845")
+DZEN_YS              = os.environ.get("DZEN_YS",              "udn.cDpTTU0gU3R1ZGlh#c_chck.3966839074")
+DZEN_VID             = os.environ.get("DZEN_VID",             "9568a88486a81305")
+DZEN_SSO_STATUS      = os.environ.get("DZEN_SSO_STATUS",      "sso.passport.yandex.ru:synchronized")
+DZEN_I               = os.environ.get("DZEN_I",               "AQC9va9pAQA3BgUCAf0=")
+DZEN_MDA2_BEACON     = os.environ.get("DZEN_MDA2_BEACON",     "1777864294106")
+DZEN_ZEN_SESSION_ID  = os.environ.get("DZEN_ZEN_SESSION_ID",  "b8iRdsH1dcOZCTKzYtdIZbr0DU9mPwTOAi1.1775884105016")
 
 # ══════════════════════════════════════
 #  УТИЛИТЫ
@@ -376,13 +379,16 @@ def twitter_bot():
 # ══════════════════════════════════════
 def get_dzen_posts():
     try:
-        # Cookies для аутентификации Yandex
+        # Cookies для аутентификации Yandex/Dzen
         cookies = (
             f"yandex_login={DZEN_YANDEX_LOGIN}; "
             f"yandexuid={DZEN_YANDEXUID}; "
             f"ys={DZEN_YS}; "
             f"vid={DZEN_VID}; "
             f"sso_status={DZEN_SSO_STATUS}; "
+            f"i={DZEN_I}; "
+            f"mda2_beacon={DZEN_MDA2_BEACON}; "
+            f"zen_session_id={DZEN_ZEN_SESSION_ID}; "
             f"rec-tech=true; "
             f"skip_dzen_pro=true"
         )
