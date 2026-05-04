@@ -369,47 +369,59 @@ def twitter_bot():
 # ══════════════════════════════════════
 def get_dzen_posts():
     try:
-        # Парсим HTML страницы канала
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
-        }
-        resp = requests.get(DZEN_CHANNEL_URL, headers=headers, timeout=20)
-        log("Dzen", f"📥 HTML: {resp.status_code} | {len(resp.text)} символов")
-        if resp.status_code != 200:
-            return []
+        # Пробуем разные URL и заголовки
+        urls_to_try = [
+            ("https://m.dzen.ru/id/68086a847e921507147f4287", "iPhone"),
+            (DZEN_CHANNEL_URL, "Desktop"),
+        ]
         
-        html = resp.text
-        posts = []
-        seen = set()
+        for url, label in urls_to_try:
+            ua = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+                  if label == "iPhone" else
+                  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            headers = {
+                "User-Agent": ua,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "ru-RU,ru;q=0.9",
+            }
+            resp = requests.get(url, headers=headers, timeout=20)
+            log("Dzen", f"📥 [{label}] {url[:50]}: {resp.status_code} | {len(resp.text)} символов")
+            if resp.status_code != 200:
+                continue
+            
+            html = resp.text
+            posts = []
+            seen = set()
+            
+            # Паттерны Dzen: видео, статьи, shorts, посты
+            patterns = [
+                (r'/video/watch/([a-f0-9]{20,})', "video", "https://dzen.ru/video/watch/"),
+                (r'/a/([A-Za-z0-9_-]{15,})',       "article", "https://dzen.ru/a/"),
+                (r'/shorts/([a-f0-9]{20,})',       "shorts", "https://dzen.ru/shorts/"),
+                (r'/post/([A-Za-z0-9_-]{15,})',    "post", "https://dzen.ru/post/"),
+            ]
+            
+            for pattern, ptype, prefix in patterns:
+                for match in re.finditer(pattern, html):
+                    link = f"{prefix}{match.group(1)}"
+                    if link not in seen:
+                        seen.add(link)
+                        posts.append({"link": link, "title": ptype})
+            
+            log("Dzen", f"📊 [{label}] Найдено постов: {len(posts)}")
+            
+            if posts:
+                for p in posts[:5]:
+                    log("Dzen", f"   → {p['link']}")
+                return posts
+            else:
+                # Дебаг: что в HTML
+                if "watch" in html.lower() or "/a/" in html:
+                    log("Dzen", "⚠️  Контент есть, но паттерны не подошли")
+                else:
+                    log("Dzen", "⚠️  HTML без контента (вероятно SPA)")
         
-        # Паттерн 1: ссылки на видео /video/watch/ID
-        for match in re.finditer(r'/video/watch/([a-f0-9]{20,})', html):
-            link = f"https://dzen.ru/video/watch/{match.group(1)}"
-            if link not in seen:
-                seen.add(link)
-                posts.append({"link": link, "title": "video"})
-        
-        # Паттерн 2: ссылки на статьи /a/ID
-        for match in re.finditer(r'/a/([A-Za-z0-9_-]{15,})', html):
-            link = f"https://dzen.ru/a/{match.group(1)}"
-            if link not in seen:
-                seen.add(link)
-                posts.append({"link": link, "title": "article"})
-        
-        # Паттерн 3: shortlinks
-        for match in re.finditer(r'dzen\.ru/(shorts/[a-f0-9]{20,})', html):
-            link = f"https://dzen.ru/{match.group(1)}"
-            if link not in seen:
-                seen.add(link)
-                posts.append({"link": link, "title": "shorts"})
-        
-        log("Dzen", f"📊 Найдено постов: {len(posts)}")
-        if posts:
-            for p in posts[:3]:
-                log("Dzen", f"   → {p['link']}")
-        return posts
+        return []
     except Exception as e:
         log("Dzen", f"❌ Ошибка: {e}")
         return []
