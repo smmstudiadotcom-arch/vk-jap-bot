@@ -369,26 +369,46 @@ def twitter_bot():
 # ══════════════════════════════════════
 def get_dzen_posts():
     try:
-        # Dzen RSS feed
-        rss_url = f"{DZEN_CHANNEL_URL}?rss=true"
-        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-        resp = requests.get(rss_url, headers=headers, timeout=15)
-        log("Dzen", f"📥 RSS: {resp.status_code}")
+        # Парсим HTML страницы канала
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+        }
+        resp = requests.get(DZEN_CHANNEL_URL, headers=headers, timeout=20)
+        log("Dzen", f"📥 HTML: {resp.status_code} | {len(resp.text)} символов")
         if resp.status_code != 200:
             return []
         
-        # Парсим RSS — ищем <link> внутри <item>
-        # Простой regex парсер (избегаем зависимости от feedparser)
-        items = re.findall(r'<item>(.*?)</item>', resp.text, re.DOTALL)
+        html = resp.text
         posts = []
-        for item in items:
-            link_match = re.search(r'<link>(.*?)</link>', item)
-            title_match = re.search(r'<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>', item)
-            if link_match:
-                link = link_match.group(1).strip()
-                title = title_match.group(1).strip() if title_match else ""
-                posts.append({"link": link, "title": title})
+        seen = set()
+        
+        # Паттерн 1: ссылки на видео /video/watch/ID
+        for match in re.finditer(r'/video/watch/([a-f0-9]{20,})', html):
+            link = f"https://dzen.ru/video/watch/{match.group(1)}"
+            if link not in seen:
+                seen.add(link)
+                posts.append({"link": link, "title": "video"})
+        
+        # Паттерн 2: ссылки на статьи /a/ID
+        for match in re.finditer(r'/a/([A-Za-z0-9_-]{15,})', html):
+            link = f"https://dzen.ru/a/{match.group(1)}"
+            if link not in seen:
+                seen.add(link)
+                posts.append({"link": link, "title": "article"})
+        
+        # Паттерн 3: shortlinks
+        for match in re.finditer(r'dzen\.ru/(shorts/[a-f0-9]{20,})', html):
+            link = f"https://dzen.ru/{match.group(1)}"
+            if link not in seen:
+                seen.add(link)
+                posts.append({"link": link, "title": "shorts"})
+        
         log("Dzen", f"📊 Найдено постов: {len(posts)}")
+        if posts:
+            for p in posts[:3]:
+                log("Dzen", f"   → {p['link']}")
         return posts
     except Exception as e:
         log("Dzen", f"❌ Ошибка: {e}")
