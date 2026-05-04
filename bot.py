@@ -86,6 +86,13 @@ DZEN_QTY_MIN        = 30
 DZEN_QTY_MAX        = 61
 DZEN_CHECK_INTERVAL = 60
 
+# Yandex cookies для Dzen
+DZEN_YANDEX_LOGIN = os.environ.get("DZEN_YANDEX_LOGIN", "avaavax2")
+DZEN_YANDEXUID    = os.environ.get("DZEN_YANDEXUID",    "5972834741777345845")
+DZEN_YS           = os.environ.get("DZEN_YS",           "udn.cDpTTU0gU3R1ZGlh#c_chck.3966839074")
+DZEN_VID          = os.environ.get("DZEN_VID",          "9568a88486a81305")
+DZEN_SSO_STATUS   = os.environ.get("DZEN_SSO_STATUS",   "sso.passport.yandex.ru:synchronized")
+
 # ══════════════════════════════════════
 #  УТИЛИТЫ
 # ══════════════════════════════════════
@@ -369,7 +376,17 @@ def twitter_bot():
 # ══════════════════════════════════════
 def get_dzen_posts():
     try:
-        # Пробуем разные URL и заголовки
+        # Cookies для аутентификации Yandex
+        cookies = (
+            f"yandex_login={DZEN_YANDEX_LOGIN}; "
+            f"yandexuid={DZEN_YANDEXUID}; "
+            f"ys={DZEN_YS}; "
+            f"vid={DZEN_VID}; "
+            f"sso_status={DZEN_SSO_STATUS}; "
+            f"rec-tech=true; "
+            f"skip_dzen_pro=true"
+        )
+        
         urls_to_try = [
             ("https://m.dzen.ru/id/68086a847e921507147f4287", "iPhone"),
             (DZEN_CHANNEL_URL, "Desktop"),
@@ -383,6 +400,8 @@ def get_dzen_posts():
                 "User-Agent": ua,
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "ru-RU,ru;q=0.9",
+                "Cookie": cookies,
+                "Referer": "https://dzen.ru/",
             }
             resp = requests.get(url, headers=headers, timeout=20)
             log("Dzen", f"📥 [{label}] {url[:50]}: {resp.status_code} | {len(resp.text)} символов")
@@ -393,7 +412,7 @@ def get_dzen_posts():
             posts = []
             seen = set()
             
-            # Паттерны Dzen: видео, статьи, shorts, посты
+            # Паттерны Dzen
             patterns = [
                 (r'/video/watch/([a-f0-9]{20,})', "video", "https://dzen.ru/video/watch/"),
                 (r'/a/([A-Za-z0-9_-]{15,})',       "article", "https://dzen.ru/a/"),
@@ -415,11 +434,10 @@ def get_dzen_posts():
                     log("Dzen", f"   → {p['link']}")
                 return posts
             else:
-                # Дебаг: что в HTML
                 if "watch" in html.lower() or "/a/" in html:
                     log("Dzen", "⚠️  Контент есть, но паттерны не подошли")
                 else:
-                    log("Dzen", "⚠️  HTML без контента (вероятно SPA)")
+                    log("Dzen", "⚠️  HTML без контента")
         
         return []
     except Exception as e:
