@@ -48,7 +48,7 @@ VK_GROUP3_QTY_MAX = 120
 #  RUTUBE
 # ══════════════════════════════════════
 RUTUBE_CHANNEL_ID     = "56184868"
-RUTUBE_SERVICE        = 9777
+RUTUBE_SERVICE        = 10303
 RUTUBE_QTY_MIN        = 500
 RUTUBE_QTY_MAX        = 1200
 RUTUBE_CHECK_INTERVAL = 60
