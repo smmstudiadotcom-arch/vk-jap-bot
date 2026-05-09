@@ -3,8 +3,10 @@ import random
 import time
 import os
 import re
+import json
 import threading
-from datetime import datetime
+from datetime import datetime, date
+from curl_cffi import requests as curl_requests
 
 # ══════════════════════════════════════
 #  JAP
@@ -490,24 +492,245 @@ def dzen_bot():
             log("Dzen", f"❌ Ошибка: {e}")
 
 # ══════════════════════════════════════
+#  FACEBOOK
+# ══════════════════════════════════════
+FB_PAGES = [
+    {
+        "name":      "National-Centre-Russia",
+        "page_id":   "100081997113052",
+        "url":       "https://www.facebook.com/profile.php?id=100081997113052&sk=reels_tab",
+        "service":   9604,
+        "qty_min":   500,
+        "qty_max":   1000,
+        "all_posts": False,  # только Reels
+    },
+    {
+        "name":      "kinshik",
+        "page_id":   "kinshik",
+        "url":       "https://www.facebook.com/kinshik",
+        "service":   7654,
+        "qty_min":   30,
+        "qty_max":   55,
+        "all_posts": True,  # все посты
+    },
+]
+
+FB_CHECK_INTERVAL = 3600  # каждый час
+FB_DAILY_LIMIT    = 10    # макс заказов в день на страницу
+
+FB_C_USER = os.environ.get("FB_C_USER", "61553351803414")
+FB_XS     = os.environ.get("FB_XS",     "23%3AUcW9QDH7Lw4OMA%3A2%3A1777366320%3A-1%3A-1%3A%3AAcxV4doD641eN1HEAQNfnkX0cE357pxRh9ixF-wCuA")
+FB_DATR   = os.environ.get("FB_DATR",   "gvGqaR00HB8BBQCtWvA_ZrBw")
+FB_FR     = os.environ.get("FB_FR",     "1BiHkrekV5y5wC9M4.AWcjA0M_D1BFpG4ArVdD9DEHJz1hf_Cp4e633bJFekyBL_WG64E.Bp8HUz..AAA.0.0.Bp8HUz.AWd2xaqh1GaCzn5odyasmAo3ovQ")
+FB_SB     = os.environ.get("FB_SB",     "hfGqaZIWmBX2PQV9iqh9Tr1V")
+
+FB_COOKIES_STR = f"c_user={FB_C_USER}; xs={FB_XS}; datr={FB_DATR}; fr={FB_FR}; sb={FB_SB}"
+
+FB_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Cookie": FB_COOKIES_STR,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+    "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"macOS"',
+    "Upgrade-Insecure-Requests": "1",
+}
+
+# State files для FB
+FB_PROCESSED_FILE   = "fb_processed.json"
+FB_DAILY_COUNT_FILE = "fb_daily_count.json"
+
+def fb_load_processed():
+    if os.path.exists(FB_PROCESSED_FILE):
+        try:
+            with open(FB_PROCESSED_FILE, "r") as f:
+                data = json.load(f)
+            return {k: set(v) for k, v in data.items()}
+        except Exception:
+            pass
+    return {}
+
+def fb_save_processed(data):
+    with open(FB_PROCESSED_FILE, "w") as f:
+        json.dump({k: list(v) for k, v in data.items()}, f)
+
+def fb_load_daily_count():
+    if os.path.exists(FB_DAILY_COUNT_FILE):
+        try:
+            with open(FB_DAILY_COUNT_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def fb_save_daily_count(data):
+    with open(FB_DAILY_COUNT_FILE, "w") as f:
+        json.dump(data, f)
+
+def fb_today_count(daily, page_name):
+    today = date.today().isoformat()
+    page_data = daily.get(page_name, {})
+    if page_data.get("date") != today:
+        return 0
+    return page_data.get("count", 0)
+
+def fb_increment_count(daily, page_name):
+    today = date.today().isoformat()
+    page_data = daily.get(page_name, {})
+    if page_data.get("date") != today:
+        daily[page_name] = {"date": today, "count": 1}
+    else:
+        daily[page_name]["count"] = page_data.get("count", 0) + 1
+    fb_save_daily_count(daily)
+
+def fb_fetch_posts(page_url, page_name, all_posts=False):
+    try:
+        log("FB", f"🔄 [{page_name}] GET {page_url}")
+        resp = curl_requests.get(
+            page_url,
+            headers=FB_HEADERS,
+            impersonate="chrome120",
+            timeout=30,
+            allow_redirects=True
+        )
+        log("FB", f"📥 [{page_name}] Status: {resp.status_code} | HTML: {len(resp.text)} символов")
+        
+        if resp.status_code != 200:
+            log("FB", f"⚠️  [{page_name}] {resp.text[:200]}")
+            return []
+        
+        html = resp.text
+        html_clean = html.replace("\\\\/", "/").replace("\\/", "/")
+        
+        urls = set()
+        
+        if all_posts:
+            # Только /posts/pfbid... — без дублей
+            for match in re.finditer(r'/posts/(pfbid[A-Za-z0-9]{20,}|\d{10,})', html_clean):
+                urls.add(f"https://www.facebook.com/{page_name}/posts/{match.group(1)}")
+            log("FB", f"📊 [{page_name}] Найдено постов: {len(urls)}")
+        else:
+            # Только Reels
+            patterns = [
+                r'/reel/(\d{10,})',
+                r'"video_id":"(\d{10,})"',
+                r'/videos/(\d{10,})',
+                r'watch/\?v=(\d{10,})',
+            ]
+            for pattern in patterns:
+                for match in re.finditer(pattern, html_clean):
+                    urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
+            log("FB", f"🎬 [{page_name}] Найдено Reels: {len(urls)}")
+        
+        return list(urls)
+    except Exception as e:
+        log("FB", f"❌ [{page_name}] Ошибка: {e}")
+        return []
+
+def fb_process_page(page, processed, daily):
+    name = page["name"]
+    
+    today_count = fb_today_count(daily, name)
+    if today_count >= FB_DAILY_LIMIT:
+        log("FB", f"⏸  [{name}] Дневной лимит ({today_count}/{FB_DAILY_LIMIT})")
+        return
+    
+    posts = fb_fetch_posts(page["url"], name, page.get("all_posts", False))
+    if not posts:
+        return
+    
+    page_processed = processed.get(name, set())
+    
+    if not page_processed:
+        page_processed.update(posts)
+        processed[name] = page_processed
+        fb_save_processed(processed)
+        log("FB", f"📌 [{name}] Запомнено {len(posts)}. Жду новые...")
+        return
+    
+    new_posts = [url for url in posts if url not in page_processed]
+    
+    if not new_posts:
+        log("FB", f"🔍 [{name}] Нет новых")
+        return
+    
+    log("FB", f"🆕 [{name}] Новых: {len(new_posts)}")
+    
+    for post_url in new_posts:
+        today_count = fb_today_count(daily, name)
+        if today_count >= FB_DAILY_LIMIT:
+            log("FB", f"⏸  [{name}] Лимит достигнут ({today_count}/{FB_DAILY_LIMIT})")
+            break
+        
+        log("FB", f"🆕 [{name}] {post_url} ({today_count + 1}/{FB_DAILY_LIMIT})")
+        
+        # Создаём заказ через JAP (используем существующую функцию)
+        quantity = random.randint(page["qty_min"], page["qty_max"])
+        payload = {"key": JAP_API_KEY, "action": "add", "service": page["service"], "link": post_url, "quantity": quantity}
+        try:
+            log("FB", f"📤 [{name}] Заказ: service={page['service']}, qty={quantity}")
+            r = requests.post(JAP_API_URL, data=payload, timeout=15)
+            log("FB", f"📥 JAP: {r.status_code} | {repr(r.text[:150])}")
+            if r.text.strip():
+                d = r.json()
+                if "order" in d:
+                    log("FB", f"✅ [{name}] Заказ! ID: {d['order']} | Кол-во: {quantity}")
+                    page_processed.add(post_url)
+                    fb_increment_count(daily, name)
+                    time.sleep(2)
+                elif "error" in d:
+                    log("FB", f"❌ JAP ошибка: {d['error']}")
+        except Exception as e:
+            log("FB", f"❌ Ошибка заказа: {e}")
+    
+    processed[name] = page_processed
+    fb_save_processed(processed)
+
+def facebook_bot():
+    log("FB", f"📘 Запущен | Страниц: {len(FB_PAGES)} | Лимит: {FB_DAILY_LIMIT}/день")
+    for p in FB_PAGES:
+        log("FB", f"   • {p['name']} | Услуга: {p['service']} | {p['qty_min']}-{p['qty_max']}")
+    
+    processed = fb_load_processed()
+    daily     = fb_load_daily_count()
+    
+    # Первый запуск
+    for page in FB_PAGES:
+        if page["name"] not in processed:
+            log("FB", f"📌 [{page['name']}] Первый запуск...")
+            fb_process_page(page, processed, daily)
+            time.sleep(5)
+    
+    while True:
+        time.sleep(FB_CHECK_INTERVAL)
+        try:
+            for page in FB_PAGES:
+                fb_process_page(page, processed, daily)
+                time.sleep(5)
+        except Exception as e:
+            log("FB", f"❌ Ошибка: {e}")
+
+# ══════════════════════════════════════
 #  MAIN
 # ══════════════════════════════════════
 def main():
-    log("MAIN", "🚀 VK + Rutube + Twitter + Dzen бот запущен!")
+    log("MAIN", "🚀 VK + Rutube + Twitter + Dzen + Facebook бот запущен!")
     check_balance()
 
     threads = [
-        threading.Thread(target=vk_bot,      name="VK",      daemon=True),
-        threading.Thread(target=rutube_bot,   name="Rutube",  daemon=True),
-        threading.Thread(target=twitter_bot,  name="Twitter", daemon=True),
-        threading.Thread(target=dzen_bot,     name="Dzen",    daemon=True),
+        threading.Thread(target=vk_bot,       name="VK",       daemon=True),
+        threading.Thread(target=rutube_bot,    name="Rutube",   daemon=True),
+        threading.Thread(target=twitter_bot,   name="Twitter",  daemon=True),
+        threading.Thread(target=dzen_bot,      name="Dzen",     daemon=True),
+        threading.Thread(target=facebook_bot,  name="Facebook", daemon=True),
     ]
 
     for t in threads:
         t.start()
         time.sleep(3)
 
-    log("MAIN", "✅ Все 4 бота запущены! VK + Rutube + Twitter + Dzen")
+    log("MAIN", "✅ Все 5 ботов запущены! VK + Rutube + Twitter + Dzen + Facebook")
 
     while True:
         time.sleep(3600)
