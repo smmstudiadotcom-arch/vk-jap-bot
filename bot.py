@@ -46,6 +46,11 @@ VK_GROUP3_PAGES   = [
 VK_GROUP3_QTY_MIN = 50
 VK_GROUP3_QTY_MAX = 120
 
+# Группа 4: patronsanme (лайки 50-100)
+VK_GROUP4_PAGES   = ["patronsanme"]
+VK_GROUP4_QTY_MIN = 50
+VK_GROUP4_QTY_MAX = 100
+
 # ══════════════════════════════════════
 #  RUTUBE
 # ══════════════════════════════════════
@@ -190,10 +195,11 @@ def get_vk_post(page_slug):
         return None, None
 
 def vk_bot():
-    all_pages = VK_GROUP1_PAGES + VK_GROUP2_PAGES + VK_GROUP3_PAGES
+    all_pages = VK_GROUP1_PAGES + VK_GROUP2_PAGES + VK_GROUP3_PAGES + VK_GROUP4_PAGES
     log("VK", f"📱 Запущен | Группа1 (20-35): {VK_GROUP1_PAGES}")
     log("VK", f"📱 Группа2 (80-110): {VK_GROUP2_PAGES}")
     log("VK", f"📱 Группа3 (50-120): {VK_GROUP3_PAGES}")
+    log("VK", f"📱 Группа4 (50-100): {VK_GROUP4_PAGES}")
     state = load_state_dict("vk_last_posts.txt")
     
     # Инициализация для всех страниц
@@ -221,8 +227,10 @@ def vk_bot():
                         qty_min, qty_max = VK_GROUP1_QTY_MIN, VK_GROUP1_QTY_MAX
                     elif page in VK_GROUP2_PAGES:
                         qty_min, qty_max = VK_GROUP2_QTY_MIN, VK_GROUP2_QTY_MAX
-                    else:  # VK_GROUP3_PAGES
+                    elif page in VK_GROUP3_PAGES:
                         qty_min, qty_max = VK_GROUP3_QTY_MIN, VK_GROUP3_QTY_MAX
+                    else:  # VK_GROUP4_PAGES
+                        qty_min, qty_max = VK_GROUP4_QTY_MIN, VK_GROUP4_QTY_MAX
                     
                     create_jap_order("VK", post_url, VK_SERVICE, qty_min, qty_max)
                     state[page] = latest_id
