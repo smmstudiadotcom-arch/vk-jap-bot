@@ -49,7 +49,8 @@ VK_GROUP3_QTY_MAX = 100
 # Группа 4: временные (лайки 40-69, истекает 3 июня 2026)
 from datetime import date as _date_cls
 VK_GROUP4_PAGES   = [
-    {"page": "vica.nikiforova", "expires": "2026-06-03"},
+    {"page": "vica.nikiforova",   "expires": "2026-06-03"},
+    {"page": "secretsofthewallet", "expires": "2026-06-05"},
 ]
 VK_GROUP4_QTY_MIN = 40
 VK_GROUP4_QTY_MAX = 69
