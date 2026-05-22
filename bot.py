@@ -85,23 +85,20 @@ TW_HEADERS = {
 }
 
 # ══════════════════════════════════════
-#  DZEN
+#  YOUTUBE (только стримы)
 # ══════════════════════════════════════
-DZEN_CHANNEL_URL    = "https://dzen.ru/id/68086a847e921507147f4287"
-DZEN_SERVICE        = 6448
-DZEN_QTY_MIN        = 30
-DZEN_QTY_MAX        = 61
-DZEN_CHECK_INTERVAL = 60
+YT_CHANNEL_HANDLE  = "ArmeniaTodayTV"
+YT_CHECK_INTERVAL  = 60
 
-# Yandex cookies для Dzen
-DZEN_YANDEX_LOGIN    = os.environ.get("DZEN_YANDEX_LOGIN",    "avaavax2")
-DZEN_YANDEXUID       = os.environ.get("DZEN_YANDEXUID",       "5972834741777345845")
-DZEN_YS              = os.environ.get("DZEN_YS",              "udn.cDpTTU0gU3R1ZGlh#c_chck.3966839074")
-DZEN_VID             = os.environ.get("DZEN_VID",             "9568a88486a81305")
-DZEN_SSO_STATUS      = os.environ.get("DZEN_SSO_STATUS",      "sso.passport.yandex.ru:synchronized")
-DZEN_I               = os.environ.get("DZEN_I",               "AQC9va9pAQA3BgUCAf0=")
-DZEN_MDA2_BEACON     = os.environ.get("DZEN_MDA2_BEACON",     "1777864294106")
-DZEN_ZEN_SESSION_ID  = os.environ.get("DZEN_ZEN_SESSION_ID",  "b8iRdsH1dcOZCTKzYtdIZbr0DU9mPwTOAi1.1775884105016")
+# Услуга 1: просмотры
+YT_SERVICE_1 = 1532
+YT_QTY_MIN_1 = 500
+YT_QTY_MAX_1 = 1000
+
+# Услуга 2
+YT_SERVICE_2 = 2085
+YT_QTY_MIN_2 = 10
+YT_QTY_MAX_2 = 25
 
 # ══════════════════════════════════════
 #  УТИЛИТЫ
@@ -385,119 +382,146 @@ def twitter_bot():
             log("Twitter", f"❌ Ошибка: {e}")
 
 # ══════════════════════════════════════
-#  DZEN
+#  YOUTUBE (только стримы)
 # ══════════════════════════════════════
-def get_dzen_posts():
+def yt_get_channel_id():
+    """Получить channel_id из @handle"""
     try:
-        # Cookies для аутентификации Yandex/Dzen
-        cookies = (
-            f"yandex_login={DZEN_YANDEX_LOGIN}; "
-            f"yandexuid={DZEN_YANDEXUID}; "
-            f"ys={DZEN_YS}; "
-            f"vid={DZEN_VID}; "
-            f"sso_status={DZEN_SSO_STATUS}; "
-            f"i={DZEN_I}; "
-            f"mda2_beacon={DZEN_MDA2_BEACON}; "
-            f"zen_session_id={DZEN_ZEN_SESSION_ID}; "
-            f"rec-tech=true; "
-            f"skip_dzen_pro=true"
-        )
+        url = f"https://www.youtube.com/@{YT_CHANNEL_HANDLE}"
+        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+        resp = requests.get(url, headers=headers, timeout=15)
+        if resp.status_code != 200:
+            log("YouTube", f"❌ Не могу открыть канал: {resp.status_code}")
+            return None
+        match = re.search(r'"channelId":"(UC[A-Za-z0-9_-]{22})"', resp.text)
+        if not match:
+            match = re.search(r'/channel/(UC[A-Za-z0-9_-]{22})', resp.text)
+        if match:
+            channel_id = match.group(1)
+            log("YouTube", f"✅ Channel ID: {channel_id}")
+            return channel_id
+        log("YouTube", f"❌ Channel ID не найден")
+        return None
+    except Exception as e:
+        log("YouTube", f"❌ Ошибка: {e}")
+        return None
+
+def yt_get_streams(channel_id):
+    """Получить последние стримы — RSS + парсинг страницы"""
+    try:
+        suffix = channel_id[2:]
         
-        urls_to_try = [
-            ("https://m.dzen.ru/id/68086a847e921507147f4287", "iPhone"),
-            (DZEN_CHANNEL_URL, "Desktop"),
+        # Попытка 1-3: RSS playlists
+        playlist_variants = [
+            ("UULV" + suffix, "Live streams"),
+            ("UULF" + suffix, "Long form videos"),
+            ("UU"   + suffix, "All uploads"),
         ]
         
-        for url, label in urls_to_try:
-            ua = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
-                  if label == "iPhone" else
-                  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            headers = {
-                "User-Agent": ua,
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "ru-RU,ru;q=0.9",
-                "Cookie": cookies,
-                "Referer": "https://dzen.ru/",
-            }
-            resp = requests.get(url, headers=headers, timeout=20)
-            log("Dzen", f"📥 [{label}] {url[:50]}: {resp.status_code} | {len(resp.text)} символов")
-            if resp.status_code != 200:
-                continue
-            
-            html = resp.text
-            posts = []
+        for playlist_id, label in playlist_variants:
+            url = f"https://www.youtube.com/feeds/videos.xml?playlist_id={playlist_id}"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            try:
+                resp = requests.get(url, headers=headers, timeout=15)
+                log("YouTube", f"📥 [{label}] {resp.status_code} | {len(resp.text)} симв.")
+                if resp.status_code == 200:
+                    streams = []
+                    for m in re.finditer(r'<yt:videoId>([A-Za-z0-9_-]{11})</yt:videoId>', resp.text):
+                        vid = m.group(1)
+                        streams.append({"id": vid, "url": f"https://www.youtube.com/watch?v={vid}"})
+                    if streams:
+                        log("YouTube", f"📊 [{label}] Найдено: {len(streams)}")
+                        return streams
+            except Exception as e:
+                log("YouTube", f"⚠️  [{label}] {e}")
+        
+        # Fallback: парсим страницу /streams
+        log("YouTube", f"🔄 RSS не работает, парсю /streams...")
+        url = f"https://www.youtube.com/@{YT_CHANNEL_HANDLE}/streams"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+        }
+        resp = requests.get(url, headers=headers, timeout=20)
+        log("YouTube", f"📥 /streams: {resp.status_code} | {len(resp.text)} симв.")
+        
+        if resp.status_code == 200:
+            video_ids = re.findall(r'"videoId":"([A-Za-z0-9_-]{11})"', resp.text)
             seen = set()
-            
-            # Паттерны Dzen
-            patterns = [
-                (r'/video/watch/([a-f0-9]{20,})', "video", "https://dzen.ru/video/watch/"),
-                (r'/a/([A-Za-z0-9_-]{15,})',       "article", "https://dzen.ru/a/"),
-                (r'/shorts/([a-f0-9]{20,})',       "shorts", "https://dzen.ru/shorts/"),
-                (r'/post/([A-Za-z0-9_-]{15,})',    "post", "https://dzen.ru/post/"),
-            ]
-            
-            for pattern, ptype, prefix in patterns:
-                for match in re.finditer(pattern, html):
-                    link = f"{prefix}{match.group(1)}"
-                    if link not in seen:
-                        seen.add(link)
-                        posts.append({"link": link, "title": ptype})
-            
-            log("Dzen", f"📊 [{label}] Найдено постов: {len(posts)}")
-            
-            if posts:
-                for p in posts[:5]:
-                    log("Dzen", f"   → {p['link']}")
-                return posts
-            else:
-                if "watch" in html.lower() or "/a/" in html:
-                    log("Dzen", "⚠️  Контент есть, но паттерны не подошли")
-                else:
-                    log("Dzen", "⚠️  HTML без контента")
+            unique_ids = []
+            for vid in video_ids:
+                if vid not in seen:
+                    seen.add(vid)
+                    unique_ids.append(vid)
+            streams = [{"id": vid, "url": f"https://www.youtube.com/watch?v={vid}"} for vid in unique_ids[:20]]
+            log("YouTube", f"📊 [/streams] Найдено: {len(streams)}")
+            return streams
         
         return []
     except Exception as e:
-        log("Dzen", f"❌ Ошибка: {e}")
+        log("YouTube", f"❌ Ошибка: {e}")
         return []
 
-def dzen_bot():
-    log("Dzen", f"📰 Запущен | Канал: {DZEN_CHANNEL_URL} | Услуга: {DZEN_SERVICE} | {DZEN_QTY_MIN}-{DZEN_QTY_MAX}")
-    last_link = load_state("last_dzen_link.txt")
+def youtube_bot():
+    log("YouTube", f"📺 Запущен | @{YT_CHANNEL_HANDLE}")
+    log("YouTube", f"   Услуга 1: {YT_SERVICE_1} | {YT_QTY_MIN_1}-{YT_QTY_MAX_1}")
+    log("YouTube", f"   Услуга 2: {YT_SERVICE_2} | {YT_QTY_MIN_2}-{YT_QTY_MAX_2}")
     
-    if not last_link:
-        posts = get_dzen_posts()
-        if posts:
-            last_link = posts[0]["link"]
-            save_state("last_dzen_link.txt", last_link)
-            log("Dzen", f"📌 Последний пост: {last_link}. Жду новые...")
+    # channel_id
+    channel_id = None
+    while not channel_id:
+        channel_id = yt_get_channel_id()
+        if not channel_id:
+            log("YouTube", "⏳ Повтор через 60 сек...")
+            time.sleep(60)
+    
+    # Загружаем обработанные стримы
+    processed_file = "yt_processed_streams.txt"
+    if os.path.exists(processed_file):
+        with open(processed_file, "r") as f:
+            processed = set(line.strip() for line in f if line.strip())
+    else:
+        processed = set()
+    log("YouTube", f"📋 Обработанных стримов: {len(processed)}")
+    
+    # Первый запуск
+    if not processed:
+        streams = yt_get_streams(channel_id)
+        if streams:
+            for s in streams:
+                processed.add(s["id"])
+            with open(processed_file, "w") as f:
+                for vid in processed:
+                    f.write(f"{vid}\n")
+            log("YouTube", f"📌 Запомнено {len(streams)} стримов. Жду новые...")
     
     while True:
-        time.sleep(DZEN_CHECK_INTERVAL)
+        time.sleep(YT_CHECK_INTERVAL)
         try:
-            posts = get_dzen_posts()
-            if not posts:
+            streams = yt_get_streams(channel_id)
+            if not streams:
                 continue
             
-            new_posts = []
-            for post in posts:
-                if post["link"] != last_link:
-                    new_posts.append(post)
-                else:
-                    break
+            new_streams = [s for s in streams if s["id"] not in processed]
             
-            if new_posts:
-                log("Dzen", f"🆕 Новых постов: {len(new_posts)}")
-                latest_link = posts[0]["link"]
-                for post in new_posts:
-                    log("Dzen", f"🆕 {post['title'][:50]} | {post['link']}")
-                    create_jap_order("Dzen", post["link"], DZEN_SERVICE, DZEN_QTY_MIN, DZEN_QTY_MAX)
+            if new_streams:
+                log("YouTube", f"🆕 Новых стримов: {len(new_streams)}")
+                for stream in new_streams:
+                    log("YouTube", f"🆕 {stream['url']}")
+                    # Заказ 1: просмотры
+                    create_jap_order("YouTube", stream["url"], YT_SERVICE_1, YT_QTY_MIN_1, YT_QTY_MAX_1)
                     time.sleep(2)
-                save_state("last_dzen_link.txt", latest_link)
-                last_link = latest_link
+                    # Заказ 2
+                    create_jap_order("YouTube", stream["url"], YT_SERVICE_2, YT_QTY_MIN_2, YT_QTY_MAX_2)
+                    processed.add(stream["id"])
+                    with open(processed_file, "w") as f:
+                        for vid in processed:
+                            f.write(f"{vid}\n")
+                    time.sleep(2)
             else:
-                log("Dzen", f"🔍 Нет новых постов")
+                log("YouTube", f"🔍 Нет новых стримов")
         except Exception as e:
-            log("Dzen", f"❌ Ошибка: {e}")
+            log("YouTube", f"❌ Ошибка: {e}")
 
 # ══════════════════════════════════════
 #  FACEBOOK
@@ -723,14 +747,14 @@ def facebook_bot():
 #  MAIN
 # ══════════════════════════════════════
 def main():
-    log("MAIN", "🚀 VK + Rutube + Twitter + Dzen + Facebook бот запущен!")
+    log("MAIN", "🚀 VK + Rutube + Twitter + YouTube + Facebook бот запущен!")
     check_balance()
 
     threads = [
         threading.Thread(target=vk_bot,       name="VK",       daemon=True),
         threading.Thread(target=rutube_bot,    name="Rutube",   daemon=True),
         threading.Thread(target=twitter_bot,   name="Twitter",  daemon=True),
-        threading.Thread(target=dzen_bot,      name="Dzen",     daemon=True),
+        threading.Thread(target=youtube_bot,   name="YouTube",  daemon=True),
         threading.Thread(target=facebook_bot,  name="Facebook", daemon=True),
     ]
 
@@ -738,7 +762,7 @@ def main():
         t.start()
         time.sleep(3)
 
-    log("MAIN", "✅ Все 5 ботов запущены! VK + Rutube + Twitter + Dzen + Facebook")
+    log("MAIN", "✅ Все 5 ботов запущены! VK + Rutube + Twitter + YouTube + Facebook")
 
     while True:
         time.sleep(3600)
