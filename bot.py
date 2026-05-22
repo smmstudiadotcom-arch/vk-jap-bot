@@ -46,6 +46,19 @@ VK_GROUP3_PAGES   = ["patronsanme"]
 VK_GROUP3_QTY_MIN = 50
 VK_GROUP3_QTY_MAX = 100
 
+# Группа 4: временные (лайки 40-69, истекает 3 июня 2026)
+from datetime import date as _date_cls
+VK_GROUP4_PAGES   = [
+    {"page": "vica.nikiforova", "expires": "2026-06-03"},
+]
+VK_GROUP4_QTY_MIN = 40
+VK_GROUP4_QTY_MAX = 69
+
+def vk_group4_active_pages():
+    """Возвращает только не истёкшие страницы Группы 4"""
+    today = _date_cls.today().isoformat()
+    return [p["page"] for p in VK_GROUP4_PAGES if p["expires"] >= today]
+
 # ══════════════════════════════════════
 #  RUTUBE
 # ══════════════════════════════════════
@@ -187,14 +200,15 @@ def get_vk_post(page_slug):
         return None, None
 
 def vk_bot():
-    all_pages = VK_GROUP1_PAGES + VK_GROUP2_PAGES + VK_GROUP3_PAGES
     log("VK", f"📱 Запущен | Группа1 (80-110): {VK_GROUP1_PAGES}")
     log("VK", f"📱 Группа2 (50-120): {VK_GROUP2_PAGES}")
     log("VK", f"📱 Группа3 (50-100): {VK_GROUP3_PAGES}")
+    log("VK", f"📱 Группа4 врем. (40-69): {[(p['page'], p['expires']) for p in VK_GROUP4_PAGES]}")
     state = load_state_dict("vk_last_posts.txt")
     
     # Инициализация для всех страниц
-    for page in all_pages:
+    initial_pages = VK_GROUP1_PAGES + VK_GROUP2_PAGES + VK_GROUP3_PAGES + vk_group4_active_pages()
+    for page in initial_pages:
         if page not in state:
             post_id, _ = get_vk_post(page)
             if post_id:
@@ -205,6 +219,10 @@ def vk_bot():
     while True:
         time.sleep(VK_CHECK_INTERVAL)
         try:
+            # Группа 4 может меняться по истечении дат
+            group4_active = vk_group4_active_pages()
+            all_pages = VK_GROUP1_PAGES + VK_GROUP2_PAGES + VK_GROUP3_PAGES + group4_active
+            
             for page in all_pages:
                 latest_id, post_url = get_vk_post(page)
                 if not latest_id:
@@ -218,8 +236,10 @@ def vk_bot():
                         qty_min, qty_max = VK_GROUP1_QTY_MIN, VK_GROUP1_QTY_MAX
                     elif page in VK_GROUP2_PAGES:
                         qty_min, qty_max = VK_GROUP2_QTY_MIN, VK_GROUP2_QTY_MAX
-                    else:  # VK_GROUP3_PAGES
+                    elif page in VK_GROUP3_PAGES:
                         qty_min, qty_max = VK_GROUP3_QTY_MIN, VK_GROUP3_QTY_MAX
+                    else:  # Группа 4 (временные)
+                        qty_min, qty_max = VK_GROUP4_QTY_MIN, VK_GROUP4_QTY_MAX
                     
                     create_jap_order("VK", post_url, VK_SERVICE, qty_min, qty_max)
                     state[page] = latest_id
