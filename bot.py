@@ -43,6 +43,7 @@ VK_TEMPORARY = [
     # (страница, дата_окончания, мин, макс)
     ("vica.nikiforova",     "2026-06-03", 40, 69),
     ("secretsofthewallet",  "2026-06-05", 40, 69),
+    ("stranaroy_tv",        "2026-06-07", 50, 80),
 ]
 
 def vk_get_all_pages_with_ranges():
