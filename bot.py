@@ -23,42 +23,41 @@ VK_VERSION        = "5.131"
 VK_SERVICE        = 3756
 VK_CHECK_INTERVAL = 60
 
-# Группа 1: фонд (лайки 80-110)
-VK_GROUP1_PAGES   = [
-    "public218647080",
-    "partner_bf_anna_maria",
-    "meropriyatiya_bf_anna_maria",
-    "fond_anna_maria"
-]
-VK_GROUP1_QTY_MIN = 80
-VK_GROUP1_QTY_MAX = 110
-
-# Группа 2: саморазвитие (лайки 50-120)
-VK_GROUP2_PAGES   = [
-    "pro_samorasvitie",
-    "vera_lartseva"
-]
-VK_GROUP2_QTY_MIN = 50
-VK_GROUP2_QTY_MAX = 120
-
-# Группа 3: patronsanme (лайки 50-100)
-VK_GROUP3_PAGES   = ["patronsanme"]
-VK_GROUP3_QTY_MIN = 50
-VK_GROUP3_QTY_MAX = 100
-
-# Группа 4: временные (лайки 40-69, истекает 3 июня 2026)
 from datetime import date as _date_cls
-VK_GROUP4_PAGES   = [
-    {"page": "vica.nikiforova",   "expires": "2026-06-03"},
-    {"page": "secretsofthewallet", "expires": "2026-06-05"},
-]
-VK_GROUP4_QTY_MIN = 40
-VK_GROUP4_QTY_MAX = 69
 
-def vk_group4_active_pages():
-    """Возвращает только не истёкшие страницы Группы 4"""
+# ══════════════════════════════════════
+#  ПОСТОЯННЫЕ СТРАНИЦЫ
+# ══════════════════════════════════════
+VK_PERMANENT = [
+    # (страницы, мин_лайков, макс_лайков)
+    (["public218647080", "partner_bf_anna_maria", "meropriyatiya_bf_anna_maria", "fond_anna_maria"], 80, 110),
+    (["pro_samorasvitie", "vera_lartseva"],                                                          50, 120),
+    (["patronsanme"],                                                                                50, 100),
+    (["gowithrussia"],                                                                               30, 50),
+]
+
+# ══════════════════════════════════════
+#  ВРЕМЕННЫЕ СТРАНИЦЫ (с датой окончания)
+# ══════════════════════════════════════
+VK_TEMPORARY = [
+    # (страница, дата_окончания, мин, макс)
+    ("vica.nikiforova",     "2026-06-03", 40, 69),
+    ("secretsofthewallet",  "2026-06-05", 40, 69),
+]
+
+def vk_get_all_pages_with_ranges():
+    """Возвращает список (page, qty_min, qty_max) для всех активных страниц"""
+    result = []
+    # Постоянные
+    for pages, qmin, qmax in VK_PERMANENT:
+        for page in pages:
+            result.append((page, qmin, qmax))
+    # Временные (только не истёкшие)
     today = _date_cls.today().isoformat()
-    return [p["page"] for p in VK_GROUP4_PAGES if p["expires"] >= today]
+    for page, expires, qmin, qmax in VK_TEMPORARY:
+        if expires >= today:
+            result.append((page, qmin, qmax))
+    return result
 
 # ══════════════════════════════════════
 #  RUTUBE
@@ -201,15 +200,18 @@ def get_vk_post(page_slug):
         return None, None
 
 def vk_bot():
-    log("VK", f"📱 Запущен | Группа1 (80-110): {VK_GROUP1_PAGES}")
-    log("VK", f"📱 Группа2 (50-120): {VK_GROUP2_PAGES}")
-    log("VK", f"📱 Группа3 (50-100): {VK_GROUP3_PAGES}")
-    log("VK", f"📱 Группа4 врем. (40-69): {[(p['page'], p['expires']) for p in VK_GROUP4_PAGES]}")
+    log("VK", f"📱 Запущен")
+    log("VK", f"   Постоянных групп: {len(VK_PERMANENT)}")
+    for pages, qmin, qmax in VK_PERMANENT:
+        log("VK", f"   • {qmin}-{qmax} лайков: {pages}")
+    log("VK", f"   Временных страниц: {len(VK_TEMPORARY)}")
+    for page, expires, qmin, qmax in VK_TEMPORARY:
+        log("VK", f"   • @{page} | {qmin}-{qmax} | до {expires}")
+    
     state = load_state_dict("vk_last_posts.txt")
     
-    # Инициализация для всех страниц
-    initial_pages = VK_GROUP1_PAGES + VK_GROUP2_PAGES + VK_GROUP3_PAGES + vk_group4_active_pages()
-    for page in initial_pages:
+    # Инициализация для всех активных страниц
+    for page, _, _ in vk_get_all_pages_with_ranges():
         if page not in state:
             post_id, _ = get_vk_post(page)
             if post_id:
@@ -220,28 +222,14 @@ def vk_bot():
     while True:
         time.sleep(VK_CHECK_INTERVAL)
         try:
-            # Группа 4 может меняться по истечении дат
-            group4_active = vk_group4_active_pages()
-            all_pages = VK_GROUP1_PAGES + VK_GROUP2_PAGES + VK_GROUP3_PAGES + group4_active
-            
-            for page in all_pages:
+            # Каждую итерацию пересчитываем активные страницы (для временных)
+            for page, qty_min, qty_max in vk_get_all_pages_with_ranges():
                 latest_id, post_url = get_vk_post(page)
                 if not latest_id:
                     continue
                 last_id = state.get(page)
                 if latest_id != last_id:
                     log("VK", f"🆕 Новый пост @{page}: {post_url}")
-                    
-                    # Определяем диапазон для страницы
-                    if page in VK_GROUP1_PAGES:
-                        qty_min, qty_max = VK_GROUP1_QTY_MIN, VK_GROUP1_QTY_MAX
-                    elif page in VK_GROUP2_PAGES:
-                        qty_min, qty_max = VK_GROUP2_QTY_MIN, VK_GROUP2_QTY_MAX
-                    elif page in VK_GROUP3_PAGES:
-                        qty_min, qty_max = VK_GROUP3_QTY_MIN, VK_GROUP3_QTY_MAX
-                    else:  # Группа 4 (временные)
-                        qty_min, qty_max = VK_GROUP4_QTY_MIN, VK_GROUP4_QTY_MAX
-                    
                     create_jap_order("VK", post_url, VK_SERVICE, qty_min, qty_max)
                     state[page] = latest_id
                     save_state_dict("vk_last_posts.txt", state)
