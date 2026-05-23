@@ -410,35 +410,29 @@ def yt_get_channel_id():
         return None
 
 def yt_get_streams(channel_id):
-    """Получить последние стримы — RSS + парсинг страницы"""
+    """Получить ТОЛЬКО стримы — RSS Live streams или /streams страница"""
     try:
         suffix = channel_id[2:]
         
-        # Попытка 1-3: RSS playlists
-        playlist_variants = [
-            ("UULV" + suffix, "Live streams"),
-            ("UULF" + suffix, "Long form videos"),
-            ("UU"   + suffix, "All uploads"),
-        ]
+        # Попытка 1: RSS Live streams (только стримы!)
+        playlist_id = "UULV" + suffix
+        url = f"https://www.youtube.com/feeds/videos.xml?playlist_id={playlist_id}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        try:
+            resp = requests.get(url, headers=headers, timeout=15)
+            log("YouTube", f"📥 [Live streams RSS] {resp.status_code} | {len(resp.text)} симв.")
+            if resp.status_code == 200:
+                streams = []
+                for m in re.finditer(r'<yt:videoId>([A-Za-z0-9_-]{11})</yt:videoId>', resp.text):
+                    vid = m.group(1)
+                    streams.append({"id": vid, "url": f"https://www.youtube.com/watch?v={vid}"})
+                if streams:
+                    log("YouTube", f"📊 [Live streams RSS] Найдено: {len(streams)}")
+                    return streams
+        except Exception as e:
+            log("YouTube", f"⚠️  [Live streams RSS] {e}")
         
-        for playlist_id, label in playlist_variants:
-            url = f"https://www.youtube.com/feeds/videos.xml?playlist_id={playlist_id}"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            try:
-                resp = requests.get(url, headers=headers, timeout=15)
-                log("YouTube", f"📥 [{label}] {resp.status_code} | {len(resp.text)} симв.")
-                if resp.status_code == 200:
-                    streams = []
-                    for m in re.finditer(r'<yt:videoId>([A-Za-z0-9_-]{11})</yt:videoId>', resp.text):
-                        vid = m.group(1)
-                        streams.append({"id": vid, "url": f"https://www.youtube.com/watch?v={vid}"})
-                    if streams:
-                        log("YouTube", f"📊 [{label}] Найдено: {len(streams)}")
-                        return streams
-            except Exception as e:
-                log("YouTube", f"⚠️  [{label}] {e}")
-        
-        # Fallback: парсим страницу /streams
+        # Попытка 2: парсим страницу /streams
         log("YouTube", f"🔄 RSS не работает, парсю /streams...")
         url = f"https://www.youtube.com/@{YT_CHANNEL_HANDLE}/streams"
         headers = {
@@ -460,6 +454,7 @@ def yt_get_streams(channel_id):
             log("YouTube", f"📊 [/streams] Найдено: {len(streams)}")
             return streams
         
+        log("YouTube", f"⚠️  Не удалось получить стримы")
         return []
     except Exception as e:
         log("YouTube", f"❌ Ошибка: {e}")
