@@ -409,6 +409,37 @@ def yt_get_channel_id():
         log("YouTube", f"❌ Ошибка: {e}")
         return None
 
+def yt_is_stream(video_id):
+    """Проверяем что видео — это стрим (live, upcoming, или закончившийся стрим).
+    Возвращает True только если это точно стрим."""
+    try:
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+        }
+        resp = requests.get(url, headers=headers, timeout=20)
+        if resp.status_code != 200:
+            log("YouTube", f"⚠️  Не могу проверить {video_id}: status {resp.status_code}")
+            return False
+        
+        html = resp.text
+        
+        # Маркеры стрима в HTML
+        is_live_content = '"isLiveContent":true' in html
+        is_live_now     = '"isLiveNow":true' in html or '"isLive":true' in html
+        was_live        = '"wasLive":true' in html
+        is_upcoming     = '"isUpcoming":true' in html
+        has_live_details = '"liveBroadcastDetails"' in html
+        
+        is_stream = is_live_content or is_live_now or was_live or is_upcoming or has_live_details
+        
+        log("YouTube", f"🔎 {video_id}: live={is_live_content} now={is_live_now} was={was_live} upcoming={is_upcoming} details={has_live_details} → стрим={is_stream}")
+        return is_stream
+    except Exception as e:
+        log("YouTube", f"❌ Проверка {video_id}: {e}")
+        return False
+
 def yt_get_streams(channel_id):
     """Получить ТОЛЬКО стримы — RSS Live streams или /streams страница"""
     try:
@@ -503,9 +534,18 @@ def youtube_bot():
             new_streams = [s for s in streams if s["id"] not in processed]
             
             if new_streams:
-                log("YouTube", f"🆕 Новых стримов: {len(new_streams)}")
+                log("YouTube", f"🆕 Найдено новых видео: {len(new_streams)} — проверяю что это стримы...")
                 for stream in new_streams:
-                    log("YouTube", f"🆕 {stream['url']}")
+                    # ТРОЙНАЯ ПРОВЕРКА: точно ли это стрим?
+                    if not yt_is_stream(stream["id"]):
+                        log("YouTube", f"❌ {stream['url']} — НЕ СТРИМ, пропускаю")
+                        processed.add(stream["id"])  # запомнить чтобы больше не проверять
+                        with open(processed_file, "w") as f:
+                            for vid in processed:
+                                f.write(f"{vid}\n")
+                        continue
+                    
+                    log("YouTube", f"✅ {stream['url']} — это стрим, создаю заказы")
                     # Заказ 1: просмотры
                     create_jap_order("YouTube", stream["url"], YT_SERVICE_1, YT_QTY_MIN_1, YT_QTY_MAX_1)
                     time.sleep(2)
