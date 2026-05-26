@@ -411,8 +411,10 @@ def yt_get_channel_id():
         return None
 
 def yt_is_stream(video_id):
-    """Проверяем что видео — это стрим (live, upcoming, или закончившийся стрим).
-    Возвращает True только если это точно стрим."""
+    """Проверяем что видео — это стрим. Возвращает:
+    - "yes"     — точно стрим (есть маркеры в HTML)
+    - "no"      — точно НЕ стрим (HTML получен, маркеров нет)
+    - "unknown" — не смогли проверить (429, таймаут, сеть) → пробовать снова"""
     try:
         url = f"https://www.youtube.com/watch?v={video_id}"
         headers = {
@@ -421,8 +423,8 @@ def yt_is_stream(video_id):
         }
         resp = requests.get(url, headers=headers, timeout=20)
         if resp.status_code != 200:
-            log("YouTube", f"⚠️  Не могу проверить {video_id}: status {resp.status_code}")
-            return False
+            log("YouTube", f"⚠️  Не могу проверить {video_id}: status {resp.status_code} → повтор через минуту")
+            return "unknown"
         
         html = resp.text
         
@@ -436,36 +438,45 @@ def yt_is_stream(video_id):
         is_stream = is_live_content or is_live_now or was_live or is_upcoming or has_live_details
         
         log("YouTube", f"🔎 {video_id}: live={is_live_content} now={is_live_now} was={was_live} upcoming={is_upcoming} details={has_live_details} → стрим={is_stream}")
-        return is_stream
+        return "yes" if is_stream else "no"
     except Exception as e:
-        log("YouTube", f"❌ Проверка {video_id}: {e}")
-        return False
+        log("YouTube", f"❌ Проверка {video_id}: {e} → повтор через минуту")
+        return "unknown"
+
+def yt_parse_published_time(text):
+    """Парсит относительное время YouTube ('5 минут назад', '2 часа назад') в секунды.
+    Возвращает количество секунд назад. Если не смог распарсить — возвращает None."""
+    if not text:
+        return None
+    text = text.lower()
+    
+    # Извлекаем число
+    m = re.search(r'(\d+)', text)
+    if not m:
+        return None
+    num = int(m.group(1))
+    
+    # Определяем единицу времени (русский и английский)
+    if any(w in text for w in ["секунд", "second"]):
+        return num
+    if any(w in text for w in ["минут", "minute"]):
+        return num * 60
+    if any(w in text for w in ["час", "hour"]):
+        return num * 3600
+    if any(w in text for w in ["ден", "дне", "дня", "day"]):
+        return num * 86400
+    if any(w in text for w in ["недел", "week"]):
+        return num * 604800
+    if any(w in text for w in ["месяц", "month"]):
+        return num * 2592000
+    if any(w in text for w in ["год", "лет", "year"]):
+        return num * 31536000
+    return None
 
 def yt_get_streams(channel_id):
-    """Получить ТОЛЬКО стримы — RSS Live streams или /streams страница"""
+    """Парсит страницу /streams и возвращает список стримов с временем публикации.
+    Возвращает: [{id, url, published_seconds_ago, published_text}, ...]"""
     try:
-        suffix = channel_id[2:]
-        
-        # Попытка 1: RSS Live streams (только стримы!)
-        playlist_id = "UULV" + suffix
-        url = f"https://www.youtube.com/feeds/videos.xml?playlist_id={playlist_id}"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        try:
-            resp = requests.get(url, headers=headers, timeout=15)
-            log("YouTube", f"📥 [Live streams RSS] {resp.status_code} | {len(resp.text)} симв.")
-            if resp.status_code == 200:
-                streams = []
-                for m in re.finditer(r'<yt:videoId>([A-Za-z0-9_-]{11})</yt:videoId>', resp.text):
-                    vid = m.group(1)
-                    streams.append({"id": vid, "url": f"https://www.youtube.com/watch?v={vid}"})
-                if streams:
-                    log("YouTube", f"📊 [Live streams RSS] Найдено: {len(streams)}")
-                    return streams
-        except Exception as e:
-            log("YouTube", f"⚠️  [Live streams RSS] {e}")
-        
-        # Попытка 2: парсим страницу /streams
-        log("YouTube", f"🔄 RSS не работает, парсю /streams...")
         url = f"https://www.youtube.com/@{YT_CHANNEL_HANDLE}/streams"
         headers = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -474,20 +485,52 @@ def yt_get_streams(channel_id):
         resp = requests.get(url, headers=headers, timeout=20)
         log("YouTube", f"📥 /streams: {resp.status_code} | {len(resp.text)} симв.")
         
-        if resp.status_code == 200:
-            video_ids = re.findall(r'"videoId":"([A-Za-z0-9_-]{11})"', resp.text)
-            seen = set()
-            unique_ids = []
-            for vid in video_ids:
-                if vid not in seen:
-                    seen.add(vid)
-                    unique_ids.append(vid)
-            streams = [{"id": vid, "url": f"https://www.youtube.com/watch?v={vid}"} for vid in unique_ids[:20]]
-            log("YouTube", f"📊 [/streams] Найдено: {len(streams)}")
-            return streams
+        if resp.status_code != 200:
+            log("YouTube", f"⚠️  Не удалось получить /streams")
+            return []
         
-        log("YouTube", f"⚠️  Не удалось получить стримы")
-        return []
+        html = resp.text
+        
+        # Извлекаем блоки видео (videoRenderer / gridVideoRenderer)
+        # В HTML страницы YouTube для каждого видео есть JSON с полями:
+        #   "videoId":"..."
+        #   "publishedTimeText":{"simpleText":"5 минут назад"} или {"runs":[{"text":"..."}]}
+        
+        streams = []
+        seen_ids = set()
+        
+        # Ищем все videoRenderer блоки
+        # Простой подход: ищем videoId и сразу после него publishedTimeText
+        # Паттерн: "videoId":"XXX" ... "publishedTimeText":{"simpleText":"..."}
+        
+        pattern = re.compile(
+            r'"videoId":"([A-Za-z0-9_-]{11})"'
+            r'(?:(?!"videoId").)*?'
+            r'"publishedTimeText":\{"simpleText":"([^"]+)"\}',
+            re.DOTALL
+        )
+        
+        for m in pattern.finditer(html):
+            vid = m.group(1)
+            published_text = m.group(2)
+            if vid in seen_ids:
+                continue
+            seen_ids.add(vid)
+            
+            seconds_ago = yt_parse_published_time(published_text)
+            streams.append({
+                "id": vid,
+                "url": f"https://www.youtube.com/watch?v={vid}",
+                "published_seconds_ago": seconds_ago,
+                "published_text": published_text,
+            })
+            if len(streams) >= 20:
+                break
+        
+        log("YouTube", f"📊 [/streams] Найдено: {len(streams)}")
+        if streams:
+            log("YouTube", f"   🆕 Самый свежий: {streams[0]['published_text']} ({streams[0]['id']})")
+        return streams
     except Exception as e:
         log("YouTube", f"❌ Ошибка: {e}")
         return []
@@ -497,7 +540,7 @@ def youtube_bot():
     log("YouTube", f"   Услуга 1: {YT_SERVICE_1} | {YT_QTY_MIN_1}-{YT_QTY_MAX_1}")
     log("YouTube", f"   Услуга 2: {YT_SERVICE_2} | {YT_QTY_MIN_2}-{YT_QTY_MAX_2}")
     
-    # channel_id
+    # channel_id (нужен для совместимости, но используется только для логов)
     channel_id = None
     while not channel_id:
         channel_id = yt_get_channel_id()
@@ -505,7 +548,7 @@ def youtube_bot():
             log("YouTube", "⏳ Повтор через 60 сек...")
             time.sleep(60)
     
-    # Загружаем обработанные стримы
+    # Загружаем уже обработанные стримы (чтобы не дублировать заказы)
     processed_file = "yt_processed_streams.txt"
     if os.path.exists(processed_file):
         with open(processed_file, "r") as f:
@@ -514,7 +557,8 @@ def youtube_bot():
         processed = set()
     log("YouTube", f"📋 Обработанных стримов: {len(processed)}")
     
-    # Первый запуск
+    # При первом запуске — запомнить все текущие стримы как уже виденные
+    # (чтобы не накрутить на старые)
     if not processed:
         streams = yt_get_streams(channel_id)
         if streams:
@@ -532,25 +576,43 @@ def youtube_bot():
             if not streams:
                 continue
             
-            new_streams = [s for s in streams if s["id"] not in processed]
+            # Стрим считается НОВЫМ если:
+            # 1. Его ID НЕ в processed (не обрабатывали раньше)
+            # 2. Время публикации < 30 минут назад (свежий)
+            # Защита: если время не парсится — пропускаем (не накручиваем на старое)
+            MAX_AGE_SECONDS = 30 * 60  # 30 минут
+            
+            new_streams = []
+            for s in streams:
+                if s["id"] in processed:
+                    continue
+                age = s.get("published_seconds_ago")
+                if age is None:
+                    # Не смогли распарсить время — считаем что стрим старый, запоминаем
+                    log("YouTube", f"⚠️  {s['id']} — не смог распарсить время '{s['published_text']}', пропускаю")
+                    processed.add(s["id"])
+                    continue
+                if age > MAX_AGE_SECONDS:
+                    # Старый стрим (>30 минут) — запоминаем и не накручиваем
+                    log("YouTube", f"⏰ {s['id']} — старый стрим ({s['published_text']}), пропускаю")
+                    processed.add(s["id"])
+                    continue
+                # Новый и свежий!
+                new_streams.append(s)
+            
+            # Сохраним обновлённый processed (на случай если запомнили что-то)
+            with open(processed_file, "w") as f:
+                for vid in processed:
+                    f.write(f"{vid}\n")
             
             if new_streams:
-                log("YouTube", f"🆕 Найдено новых видео: {len(new_streams)} — проверяю что это стримы...")
+                log("YouTube", f"🆕 Новых свежих стримов: {len(new_streams)}")
                 for stream in new_streams:
-                    # ТРОЙНАЯ ПРОВЕРКА: точно ли это стрим?
-                    if not yt_is_stream(stream["id"]):
-                        log("YouTube", f"❌ {stream['url']} — НЕ СТРИМ, пропускаю")
-                        processed.add(stream["id"])  # запомнить чтобы больше не проверять
-                        with open(processed_file, "w") as f:
-                            for vid in processed:
-                                f.write(f"{vid}\n")
-                        continue
-                    
-                    log("YouTube", f"✅ {stream['url']} — это стрим, создаю заказы")
+                    log("YouTube", f"✅ {stream['url']} ({stream['published_text']}) — создаю заказы")
                     # Заказ 1: просмотры
                     create_jap_order("YouTube", stream["url"], YT_SERVICE_1, YT_QTY_MIN_1, YT_QTY_MAX_1)
                     time.sleep(2)
-                    # Заказ 2
+                    # Заказ 2: лайки
                     create_jap_order("YouTube", stream["url"], YT_SERVICE_2, YT_QTY_MIN_2, YT_QTY_MAX_2)
                     processed.add(stream["id"])
                     with open(processed_file, "w") as f:
