@@ -553,7 +553,7 @@ def youtube_bot():
     log("YouTube", f"   Услуга 1: {YT_SERVICE_1} | {YT_QTY_MIN_1}-{YT_QTY_MAX_1}")
     log("YouTube", f"   Услуга 2: {YT_SERVICE_2} | {YT_QTY_MIN_2}-{YT_QTY_MAX_2}")
     
-    # channel_id (нужен для совместимости, но используется только для логов)
+    # channel_id (для совместимости)
     channel_id = None
     while not channel_id:
         channel_id = yt_get_channel_id()
@@ -561,26 +561,36 @@ def youtube_bot():
             log("YouTube", "⏳ Повтор через 60 сек...")
             time.sleep(60)
     
-    # Загружаем уже обработанные стримы (чтобы не дублировать заказы)
+    # Загружаем последний обработанный стрим (только ID самого верхнего)
+    last_top_file = "yt_last_top.txt"
+    if os.path.exists(last_top_file):
+        with open(last_top_file, "r") as f:
+            last_top_id = f.read().strip()
+    else:
+        last_top_id = ""
+    
+    # Также грузим набор обработанных (на случай если бот видел стрим но новых после него ещё нет)
     processed_file = "yt_processed_streams.txt"
     if os.path.exists(processed_file):
         with open(processed_file, "r") as f:
             processed = set(line.strip() for line in f if line.strip())
     else:
         processed = set()
-    log("YouTube", f"📋 Обработанных стримов: {len(processed)}")
+    log("YouTube", f"📋 Последний топ-стрим: {last_top_id or '(не задан)'} | обработано всего: {len(processed)}")
     
-    # При первом запуске — запомнить все текущие стримы как уже виденные
-    # (чтобы не накрутить на старые)
-    if not processed:
+    # При первом запуске — запомнить верхний стрим как уже виденный
+    if not last_top_id:
         streams = yt_get_streams(channel_id)
         if streams:
+            last_top_id = streams[0]["id"]
             for s in streams:
                 processed.add(s["id"])
+            with open(last_top_file, "w") as f:
+                f.write(last_top_id)
             with open(processed_file, "w") as f:
                 for vid in processed:
                     f.write(f"{vid}\n")
-            log("YouTube", f"📌 Запомнено {len(streams)} стримов. Жду новые...")
+            log("YouTube", f"📌 Запомнен верхний стрим: {last_top_id}. Жду новые...")
     
     while True:
         time.sleep(YT_CHECK_INTERVAL)
@@ -589,51 +599,55 @@ def youtube_bot():
             if not streams:
                 continue
             
-            # Стрим считается НОВЫМ если:
-            # 1. Его ID НЕ в processed (не обрабатывали раньше)
-            # 2. Время публикации < 30 минут назад (свежий)
-            # Защита: если время не парсится — пропускаем (не накручиваем на старое)
-            MAX_AGE_SECONDS = 30 * 60  # 30 минут
+            # Самый верхний в списке (YouTube сортирует /streams по убыванию даты)
+            current_top = streams[0]
             
+            # Если верхний не изменился — ничего нового
+            if current_top["id"] == last_top_id:
+                log("YouTube", f"🔍 Нет новых стримов (верхний: {last_top_id})")
+                continue
+            
+            # Верхний изменился — собираем ВСЕ новые стримы выше последнего известного
             new_streams = []
             for s in streams:
+                if s["id"] == last_top_id:
+                    break  # дошли до известного — стопаем
                 if s["id"] in processed:
-                    continue
-                age = s.get("published_seconds_ago")
-                if age is None:
-                    # Не смогли распарсить время — считаем что стрим старый, запоминаем
-                    log("YouTube", f"⚠️  {s['id']} — не смог распарсить время '{s['published_text']}', пропускаю")
-                    processed.add(s["id"])
-                    continue
-                if age > MAX_AGE_SECONDS:
-                    # Старый стрим (>30 минут) — запоминаем и не накручиваем
-                    log("YouTube", f"⏰ {s['id']} — старый стрим ({s['published_text']}), пропускаю")
-                    processed.add(s["id"])
-                    continue
-                # Новый и свежий!
+                    continue  # уже обрабатывали раньше
                 new_streams.append(s)
             
-            # Сохраним обновлённый processed (на случай если запомнили что-то)
-            with open(processed_file, "w") as f:
-                for vid in processed:
-                    f.write(f"{vid}\n")
+            if not new_streams:
+                # Верхний изменился, но все стримы уже обработаны (странная ситуация)
+                # Просто обновим last_top_id
+                last_top_id = current_top["id"]
+                with open(last_top_file, "w") as f:
+                    f.write(last_top_id)
+                log("YouTube", f"🔍 Верхний обновился но новых нет, запомнил: {last_top_id}")
+                continue
             
-            if new_streams:
-                log("YouTube", f"🆕 Новых свежих стримов: {len(new_streams)}")
-                for stream in new_streams:
-                    log("YouTube", f"✅ {stream['url']} ({stream['published_text']}) — создаю заказы")
-                    # Заказ 1: просмотры
-                    create_jap_order("YouTube", stream["url"], YT_SERVICE_1, YT_QTY_MIN_1, YT_QTY_MAX_1)
-                    time.sleep(2)
-                    # Заказ 2: лайки
-                    create_jap_order("YouTube", stream["url"], YT_SERVICE_2, YT_QTY_MIN_2, YT_QTY_MAX_2)
-                    processed.add(stream["id"])
-                    with open(processed_file, "w") as f:
-                        for vid in processed:
-                            f.write(f"{vid}\n")
-                    time.sleep(2)
-            else:
-                log("YouTube", f"🔍 Нет новых стримов")
+            # ЗАЩИТА: не больше 3 стримов за раз (на случай если YouTube перетасует список)
+            if len(new_streams) > 3:
+                log("YouTube", f"⚠️  Найдено {len(new_streams)} новых стримов — это слишком много, беру только 3 верхних")
+                new_streams = new_streams[:3]
+            
+            log("YouTube", f"🆕 Новых стримов: {len(new_streams)}")
+            for stream in new_streams:
+                log("YouTube", f"✅ {stream['url']} — создаю заказы")
+                # Заказ 1: просмотры
+                create_jap_order("YouTube", stream["url"], YT_SERVICE_1, YT_QTY_MIN_1, YT_QTY_MAX_1)
+                time.sleep(2)
+                # Заказ 2: лайки
+                create_jap_order("YouTube", stream["url"], YT_SERVICE_2, YT_QTY_MIN_2, YT_QTY_MAX_2)
+                processed.add(stream["id"])
+                with open(processed_file, "w") as f:
+                    for vid in processed:
+                        f.write(f"{vid}\n")
+                time.sleep(2)
+            
+            # Обновляем last_top_id
+            last_top_id = current_top["id"]
+            with open(last_top_file, "w") as f:
+                f.write(last_top_id)
         except Exception as e:
             log("YouTube", f"❌ Ошибка: {e}")
 
