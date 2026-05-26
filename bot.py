@@ -491,38 +491,51 @@ def yt_get_streams(channel_id):
         
         html = resp.text
         
-        # Извлекаем блоки видео (videoRenderer / gridVideoRenderer)
-        # В HTML страницы YouTube для каждого видео есть JSON с полями:
-        #   "videoId":"..."
-        #   "publishedTimeText":{"simpleText":"5 минут назад"} или {"runs":[{"text":"..."}]}
+        # Парсим videoRenderer / gridVideoRenderer блоки
+        # YouTube использует разные форматы:
+        #   "publishedTimeText":{"simpleText":"5 минут назад"}
+        #   "publishedTimeText":{"runs":[{"text":"..."}]}
+        # 
+        # Стратегия: разбиваем HTML на чанки по "videoId" и в каждом ищем время
         
         streams = []
         seen_ids = set()
         
-        # Ищем все videoRenderer блоки
-        # Простой подход: ищем videoId и сразу после него publishedTimeText
-        # Паттерн: "videoId":"XXX" ... "publishedTimeText":{"simpleText":"..."}
+        # Разделим html по videoId маркерам — каждый чанк содержит данные одного видео
+        chunks = re.split(r'"videoId":"', html)
         
-        pattern = re.compile(
-            r'"videoId":"([A-Za-z0-9_-]{11})"'
-            r'(?:(?!"videoId").)*?'
-            r'"publishedTimeText":\{"simpleText":"([^"]+)"\}',
-            re.DOTALL
-        )
-        
-        for m in pattern.finditer(html):
-            vid = m.group(1)
-            published_text = m.group(2)
+        for chunk in chunks[1:]:  # пропускаем первый (до первого videoId)
+            # Первые 11 символов — это сам videoId
+            vid_match = re.match(r'([A-Za-z0-9_-]{11})', chunk)
+            if not vid_match:
+                continue
+            vid = vid_match.group(1)
             if vid in seen_ids:
                 continue
-            seen_ids.add(vid)
             
-            seconds_ago = yt_parse_published_time(published_text)
+            # Ищем publishedTimeText в чанке (только в начале, до следующего videoId)
+            # Чанк уже обрезан до начала следующего видео
+            
+            published_text = None
+            
+            # Формат 1: simpleText
+            m1 = re.search(r'"publishedTimeText":\{"simpleText":"([^"]+)"\}', chunk[:5000])
+            if m1:
+                published_text = m1.group(1)
+            else:
+                # Формат 2: runs
+                m2 = re.search(r'"publishedTimeText":\{"runs":\[\{"text":"([^"]+)"\}', chunk[:5000])
+                if m2:
+                    published_text = m2.group(1)
+            
+            seen_ids.add(vid)
+            seconds_ago = yt_parse_published_time(published_text) if published_text else None
+            
             streams.append({
                 "id": vid,
                 "url": f"https://www.youtube.com/watch?v={vid}",
                 "published_seconds_ago": seconds_ago,
-                "published_text": published_text,
+                "published_text": published_text or "неизвестно",
             })
             if len(streams) >= 20:
                 break
