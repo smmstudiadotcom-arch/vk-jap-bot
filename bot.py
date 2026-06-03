@@ -45,7 +45,7 @@ VK_TEMPORARY = [
     ("secretsofthewallet",  "2026-07-07", 40, 69),
     ("stranaroy_tv",        "2026-06-07", 50, 80),
     ("cosmi_store",         "2026-06-30", 30, 50),
-    ("volrox",              "2026-06-16", 70, 110),
+    ("vvolroxx",            "2026-06-16", 70, 110),
 ]
 
 def vk_get_all_pages_with_ranges():
