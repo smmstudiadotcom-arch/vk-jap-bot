@@ -42,7 +42,7 @@ VK_PERMANENT = [
 VK_TEMPORARY = [
     # (страница, дата_окончания, мин, макс)
     ("vica.nikiforova",     "2026-06-03", 40, 69),
-    ("secretsofthewallet",  "2026-06-05", 40, 69),
+    ("secretsofthewallet",  "2026-07-07", 40, 69),
     ("stranaroy_tv",        "2026-06-07", 50, 80),
     ("cosmi_store",         "2026-06-30", 30, 50),
     ("volrox",              "2026-06-16", 70, 110),
@@ -870,7 +870,6 @@ def facebook_bot():
                 time.sleep(5)
         except Exception as e:
             log("FB", f"❌ Ошибка: {e}")
-
 # ══════════════════════════════════════
 #  MAIN
 # ══════════════════════════════════════
