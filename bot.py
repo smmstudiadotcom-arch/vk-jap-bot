@@ -67,7 +67,7 @@ def vk_get_all_pages_with_ranges():
 # ══════════════════════════════════════
 RUTUBE_CHANNEL_ID     = "56184868"
 RUTUBE_SERVICE        = 10303
-RUTUBE_QTY_MIN        = 500
+RUTUBE_QTY_MIN        = 1000
 RUTUBE_QTY_MAX        = 1200
 RUTUBE_CHECK_INTERVAL = 60
 
