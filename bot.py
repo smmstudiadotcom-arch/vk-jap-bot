@@ -46,6 +46,7 @@ VK_TEMPORARY = [
     ("vvolroxx",            "2026-06-16", 70, 110),
     ("biznes___13",         "2026-07-07", 20, 35),
     ("bf_derevo_zhizni",    "2026-07-07", 40, 70),
+    ("vica.nikiforova",     "2026-09-20", 50, 70),
 ]
 
 def vk_get_all_pages_with_ranges():
@@ -888,6 +889,7 @@ SP_PAGES          = [
     ("cosmi_store",        3, 5,  None),
     ("secretsofthewallet", 7, 11, "2026-07-07"),
     ("bf_derevo_zhizni",   5, 10, "2026-07-07"),
+    ("vica.nikiforova",    7, 15, "2026-09-20"),
 ]
 SP_CHECK_INTERVAL = 60             # проверка каждую минуту
 SP_PRICE_USER     = 1.0            # цена за выполнение для исполнителя (руб)
