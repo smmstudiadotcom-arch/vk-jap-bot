@@ -69,6 +69,9 @@ RUTUBE_CHANNEL_ID     = "56184868"
 RUTUBE_SERVICE        = 10303
 RUTUBE_QTY_MIN        = 1000
 RUTUBE_QTY_MAX        = 1200
+RUTUBE_LIKE_SERVICE   = 10307
+RUTUBE_LIKE_MIN       = 15
+RUTUBE_LIKE_MAX       = 25
 RUTUBE_CHECK_INTERVAL = 60
 
 # ══════════════════════════════════════
@@ -291,6 +294,8 @@ def rutube_bot():
                     vid_url = f"https://rutube.ru/video/{vid_id}/"
                     log("Rutube", f"🆕 {video.get('title','')[:50]} | {vid_url}")
                     create_jap_order("Rutube", vid_url, RUTUBE_SERVICE, RUTUBE_QTY_MIN, RUTUBE_QTY_MAX)
+                    time.sleep(2)
+                    create_jap_order("Rutube", vid_url, RUTUBE_LIKE_SERVICE, RUTUBE_LIKE_MIN, RUTUBE_LIKE_MAX)
                     time.sleep(2)
                 save_state("last_rutube_id.txt", latest_id)
                 last_id = latest_id
