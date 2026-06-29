@@ -205,6 +205,36 @@ def get_vk_post(page_slug):
         log("VK", f"❌ Ошибка @{page_slug}: {e}")
         return None, None
 
+# Мониторинг фото-альбомов (аватарки)
+# (owner_id, album_id, qmin, qmax)
+VK_PHOTO_ALBUMS = [
+    (229599026, 0, 20, 35),  # biznes___13 — аватарки, 20-35 лайков
+]
+
+def get_vk_latest_photo(owner_id, album_id):
+    """Возвращает (photo_id, photo_url) последнего фото в альбоме."""
+    try:
+        resp = requests.get(f"{VK_API_URL}/photos.get", params={
+            "owner_id": owner_id, "album_id": album_id,
+            "rev": 1, "count": 5,
+            "access_token": VK_TOKEN, "v": VK_VERSION,
+        }, timeout=15)
+        data = resp.json()
+        if "error" in data:
+            log("VK", f"❌ photos.get ошибка: {data['error'].get('error_msg')}")
+            return None, None
+        items = data.get("response", {}).get("items", [])
+        if not items:
+            return None, None
+        photo = items[0]
+        pid = photo["id"]
+        photo_url = f"https://vk.com/photo{owner_id}_{pid}"
+        log("VK", f"📷 Последнее фото owner={owner_id}: {photo_url}")
+        return str(pid), photo_url
+    except Exception as e:
+        log("VK", f"❌ Ошибка photos.get: {e}")
+        return None, None
+
 def vk_bot():
     log("VK", f"📱 Запущен")
     log("VK", f"   Постоянных групп: {len(VK_PERMANENT)}")
@@ -241,6 +271,21 @@ def vk_bot():
                     save_state_dict("vk_last_posts.txt", state)
                 else:
                     log("VK", f"🔍 @{page} — нет новых постов (последний: #{last_id})")
+
+            # Мониторинг фото-альбомов
+            for owner_id, album_id, qmin, qmax in VK_PHOTO_ALBUMS:
+                key = f"photo_{owner_id}_{album_id}"
+                latest_pid, photo_url = get_vk_latest_photo(owner_id, album_id)
+                if not latest_pid:
+                    continue
+                last_pid = state.get(key)
+                if latest_pid != last_pid:
+                    log("VK", f"🆕 Новое фото owner={owner_id}: {photo_url}")
+                    create_jap_order("VK", photo_url, VK_SERVICE, qmin, qmax)
+                    state[key] = latest_pid
+                    save_state_dict("vk_last_posts.txt", state)
+                else:
+                    log("VK", f"🔍 Фото owner={owner_id} — нет новых")
         except Exception as e:
             log("VK", f"❌ Ошибка: {e}")
 
@@ -895,7 +940,10 @@ SP_PAGES          = [
     ("bf_derevo_zhizni",   5, 10, "2026-07-07"),
     ("vica.nikiforova",    7, 15, "2026-09-20"),
 ]
-SP_CHECK_INTERVAL = 60             # проверка каждую минуту
+SP_PHOTO_ALBUMS   = [
+    # (owner_id, album_id, qmin, qmax, expires_or_None)
+    (229599026, 0, 3, 6, None),  # biznes___13 аватарки — 3-6 комментов
+]
 SP_PRICE_USER     = 1.0            # цена за выполнение для исполнителя (руб)
 SP_PRICE_ADV      = 1.3            # наценка/комиссия сверху за выполнение
 
@@ -1040,6 +1088,25 @@ def socpublic_bot():
                         log("SocPublic", f"⏸️  Задание не создалось — попробую снова через минуту")
                 else:
                     log("SocPublic", f"🔍 @{page} — нет новых постов (последний: #{state.get(page)})")
+                time.sleep(2)
+
+            # Мониторинг фото-альбомов
+            for owner_id, album_id, qmin, qmax, expires in SP_PHOTO_ALBUMS:
+                if expires and today > expires:
+                    continue
+                key = f"sp_photo_{owner_id}_{album_id}"
+                latest_pid, photo_url = get_vk_latest_photo(owner_id, album_id)
+                if not latest_pid:
+                    continue
+                if latest_pid != state.get(key):
+                    log("SocPublic", f"🆕 Новое фото owner={owner_id}: {photo_url}")
+                    ok = sp_create_task(photo_url, qmin, qmax)
+                    if ok:
+                        state[key] = latest_pid
+                        save_state_dict(state_file, state)
+                        log("SocPublic", f"💾 Запомнил фото #{latest_pid}")
+                    else:
+                        log("SocPublic", f"⏸️  Задание не создалось — попробую снова через минуту")
                 time.sleep(2)
         except Exception as e:
             log("SocPublic", f"❌ Ошибка: {e}")
