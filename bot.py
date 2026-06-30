@@ -946,6 +946,7 @@ SP_PHOTO_ALBUMS   = [
 ]
 SP_PRICE_USER     = 1.0            # цена за выполнение для исполнителя (руб)
 SP_PRICE_ADV      = 1.3            # наценка/комиссия сверху за выполнение
+SP_CHECK_INTERVAL = 60             # проверка каждую минуту
 
 def sp_api(act, **params):
     """Базовый вызов SocPublic API. Возвращает распарсенный JSON (dict) или None."""
