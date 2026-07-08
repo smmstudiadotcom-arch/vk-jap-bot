@@ -41,7 +41,6 @@ VK_PERMANENT = [
 # ══════════════════════════════════════
 VK_TEMPORARY = [
     # (страница, дата_окончания, мин, макс)
-    ("biznes___13",         "2026-07-07", 20, 35),
     ("vica.nikiforova",     "2026-09-20", 50, 70),
 ]
 
@@ -205,7 +204,6 @@ def get_vk_post(page_slug):
 # Мониторинг фото-альбомов (аватарки)
 # (owner_id, album_id, qmin, qmax)
 VK_PHOTO_ALBUMS = [
-    (229599026, 0, 20, 35),  # biznes___13 — аватарки, 20-35 лайков
 ]
 
 def get_vk_latest_photo(owner_id, album_id):
@@ -935,8 +933,6 @@ SP_PAGES          = [
     ("vica.nikiforova",    7, 15, "2026-09-20"),
 ]
 SP_PHOTO_ALBUMS   = [
-    # (owner_id, album_id, qmin, qmax, expires_or_None)
-    (229599026, 0, 3, 6, None),  # biznes___13 аватарки — 3-6 комментов
 ]
 SP_PRICE_USER     = 1.0            # цена за выполнение для исполнителя (руб)
 SP_PRICE_ADV      = 1.3            # наценка/комиссия сверху за выполнение
