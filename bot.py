@@ -30,7 +30,7 @@ from datetime import date as _date_cls
 # ══════════════════════════════════════
 VK_PERMANENT = [
     # (страницы, мин_лайков, макс_лайков)
-    (["public218647080", "partner_bf_anna_maria", "meropriyatiya_bf_anna_maria", "fond_anna_maria"], 80, 110),
+    (["fond_anna_maria"], 80, 110),
     (["pro_samorasvitie", "vera_lartseva"],                                                          50, 120),
     (["patronsanme"],                                                                                50, 100),
     (["gowithrussia"],                                                                               30, 50),
