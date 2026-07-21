@@ -934,7 +934,6 @@ SP_PAGES          = [
     ("smm.studia",         7, 14, None),
     ("pro_samorasvitie",   7, 14, None),
     ("secretsofthewallet", 7, 11, "2026-08-20"),
-    ("sportrekordrussia",  7, 11, "2026-08-17"),
     ("leader_id",          7, 11, "2026-08-13"),
     ("vica.nikiforova",    7, 15, "2026-09-20"),
 ]
