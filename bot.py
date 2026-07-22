@@ -33,7 +33,6 @@ VK_PERMANENT = [
     (["fond_anna_maria"], 80, 110),
     (["pro_samorasvitie", "vera_lartseva"],                                                          50, 120),
     (["patronsanme"],                                                                                50, 100),
-    (["gowithrussia"],                                                                               30, 50),
 ]
 
 # ══════════════════════════════════════
