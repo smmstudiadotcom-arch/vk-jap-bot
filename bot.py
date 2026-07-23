@@ -41,7 +41,6 @@ VK_PERMANENT = [
 VK_TEMPORARY = [
     # (страница, дата_окончания, мин, макс)
     ("secretsofthewallet",  "2026-08-20", 40, 69),
-    ("sportrekordrussia",   "2026-08-17", 40, 69),
     ("leader_id",           "2026-08-13", 40, 69),
     ("vica.nikiforova",     "2026-09-20", 50, 70),
 ]
