@@ -931,6 +931,7 @@ SP_PAGES          = [
     # (страница, мин_кол-во, макс_кол-во, дата_окончания или None для постоянных)
     ("smm.studia",         7, 14, None),
     ("pro_samorasvitie",   7, 14, None),
+    ("sanmerus",           5, 10, None),
     ("secretsofthewallet", 7, 11, "2026-08-20"),
     ("leader_id",          7, 11, "2026-08-13"),
     ("vica.nikiforova",    7, 15, "2026-09-20"),
