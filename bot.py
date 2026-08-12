@@ -42,8 +42,9 @@ VK_TEMPORARY = [
     # (страница, дата_окончания, мин, макс)
     ("secretsofthewallet",  "2026-08-20", 40, 69),
     ("leader_id",           "2026-08-13", 40, 69),
-    ("karinataroclub2",     "2026-08-14", 30, 50),
-    ("vica.nikiforova",     "2026-09-20", 50, 70),
+    ("karinataroclub2",          "2026-08-14", 30, 50),
+    ("vkusnyashki_ot_milashki",  "2026-09-15", 40, 60),
+    ("vica.nikiforova",          "2026-09-20", 50, 70),
 ]
 
 def vk_get_all_pages_with_ranges():
@@ -935,7 +936,8 @@ SP_PAGES          = [
     ("sanmerus",           5, 10, None),
     ("secretsofthewallet", 7, 11, "2026-08-20"),
     ("leader_id",          7, 11, "2026-08-13"),
-    ("vica.nikiforova",    7, 15, "2026-09-20"),
+    ("vkusnyashki_ot_milashki", 4, 12, "2026-09-15"),
+    ("vica.nikiforova",         7, 15, "2026-09-20"),
 ]
 SP_PHOTO_ALBUMS   = [
 ]
