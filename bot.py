@@ -78,6 +78,11 @@ TW_USERNAME    = "gowithRussia"
 TW_SERVICE     = 1334
 TW_QTY_MIN     = 800
 TW_QTY_MAX     = 1500
+TW_LIKE_SERVICE = 10344
+TW_LIKE_MIN     = 10
+TW_LIKE_MAX     = 25
+TW_SP_COMMENTS_MIN = 2
+TW_SP_COMMENTS_MAX = 4
 TW_CHECK_INTERVAL = 60
 
 TW_AUTH_TOKEN = "2dbd598ed7dac67ddcf07976325dbb708dd9e6e2"
@@ -424,6 +429,10 @@ def twitter_bot():
             if latest_id and last_id and int(latest_id) > int(last_id):
                 log("Twitter", f"🆕 Новый твит: {tweet_url}")
                 create_jap_order("Twitter", tweet_url, TW_SERVICE, TW_QTY_MIN, TW_QTY_MAX)
+                time.sleep(2)
+                create_jap_order("Twitter", tweet_url, TW_LIKE_SERVICE, TW_LIKE_MIN, TW_LIKE_MAX)
+                time.sleep(2)
+                sp_create_task_twitter(tweet_url, TW_SP_COMMENTS_MIN, TW_SP_COMMENTS_MAX)
                 save_state("last_tweet_id.txt", latest_id)
                 last_id = latest_id
             else:
@@ -957,6 +966,75 @@ def sp_api(act, **params):
     except Exception as e:
         log("SP", f"❌ {act}: {e}")
         return None
+
+def sp_build_description_twitter(post_url):
+    """HTML-описание задания для Twitter."""
+    return (
+        '<pre style="font-family: SFMono-Regular, Menlo, Monaco, Consolas, &quot;Liberation Mono&quot;, &quot;Courier New&quot;, monospace; '
+        'font-size: 14.4px; margin-top: 0px; color: rgb(33, 37, 41); background-color: rgb(240, 240, 240);">\r\n'
+        '<strong style="color: rgb(51, 51, 51); font-family: sans-serif, Arial, Verdana, &quot;Trebuchet MS&quot;; font-size: 13px;">'
+        '<span style="color: rgb(84, 84, 84); font-family: Tahoma, Arial, &quot;Times New Roman&quot;, &quot;Trebuchet MS&quot;, Impact, sans-serif; '
+        'font-size: 12px; background-color: rgb(249, 249, 249);">1. Написать  коммент &nbsp;к  посту   &nbsp; ( минимум 7 слов)</span></strong>\r\n'
+        '</pre>\r\n\r\n'
+        '<pre style="font-family: SFMono-Regular, Menlo, Monaco, Consolas, &quot;Liberation Mono&quot;, &quot;Courier New&quot;, monospace; '
+        'font-size: 14.4px; margin-top: 0px; color: rgb(33, 37, 41); background-color: rgb(240, 240, 240);">\r\n'
+        f'{post_url}</pre>\r\n'
+        '<u><strong style="color: rgb(84, 84, 84); font-family: Tahoma, Arial, &quot;Times New Roman&quot;, &quot;Trebuchet MS&quot;, Impact, sans-serif; '
+        'font-size: 12px; background-color: rgb(249, 249, 249);">'
+        'Пожалуйста пишите интересно и строго по теме поста, можете использовать ChatGpt :)</strong></u><br />\r\n'
+        '<br />\r\n<br />\r\n'
+        '2. Поставить реакцию на пост и подписаться<br />\r\n'
+        '3. Поделиться постом<br />\r\n'
+        '4. Лайкуть пару других комментов'
+    )
+
+def sp_build_approve_text_twitter():
+    """HTML-текст требований к отчёту для Twitter."""
+    return (
+        '<strong><span style="color: rgb(200, 0, 0); font-family: Tahoma, Arial, &quot;Times New Roman&quot;, &quot;Trebuchet MS&quot;, Impact, sans-serif; '
+        'font-size: 12px; background-color: rgb(249, 249, 249);">'
+        '1. Скрин&nbsp; коммента<br />\r\n'
+        '2. Ваше имя в Twitter</span></strong>'
+    )
+
+def sp_create_task_twitter(post_url, qmin, qmax):
+    """Создаёт задание для Twitter через SocPublic API."""
+    quantity  = random.randint(qmin, qmax)
+    price_adv = round(SP_PRICE_USER * SP_PRICE_ADV, 2)
+    balance   = round(quantity * price_adv, 2)
+
+    task = {
+        "name": "Написать в X (Twitter)",
+        "url": [post_url],
+        "type": "social",
+        "description": sp_build_description_twitter(post_url),
+        "approve_type": "hand",
+        "approve_text": sp_build_approve_text_twitter(),
+        "price_user": SP_PRICE_USER,
+        "balance": balance,
+        "turn_on": 1,
+    }
+
+    log("SP", f"📤 Twitter задание: {post_url} | {quantity} вып. | баланс {balance} руб")
+    resp = sp_api("task_create", data=json.dumps(task, ensure_ascii=True))
+    if not resp:
+        return False
+
+    status = resp.get("status")
+    if status == 0:
+        d = resp.get("data", {})
+        tid = d.get("id", "?")
+        active = d.get("active", "?")
+        bal = d.get("balance", "?")
+        log("SP", f"🎉 Twitter задание создано! id={tid} | статус={active} | баланс={bal} руб ({quantity} вып.)")
+        if active != "yes" and tid != "?":
+            r2 = sp_api("task_on", task_id=tid)
+            if r2 and r2.get("status") == 0:
+                log("SP", f"▶️  Задание {tid} включено")
+        return True
+    else:
+        log("SP", f"❌ Ошибка Twitter задания (status {status}): {resp.get('text', 'нет текста')}")
+        return False
 
 def sp_build_description(post_url):
     """HTML-описание задания с подставленной ссылкой на пост."""
