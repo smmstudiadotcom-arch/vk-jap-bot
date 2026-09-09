@@ -17,7 +17,7 @@ JAP_API_URL = "https://justanotherpanel.com/api/v2"
 # ══════════════════════════════════════
 #  VKONTAKTE
 # ══════════════════════════════════════
-VK_TOKEN          = os.environ.get("VK_TOKEN", "vk1.a.SniZubvnB5tUPTt1Kh-TTgpu21e7NMZmxpMEESfMijAdydwv1R2o3Ka7C3WArl4CSPKDApwP_30HY9bLap7NQmtBky2cUcho_IIIkfqiqBxPlaPLFs-YF6f44rCqdsMIauOZUUZTaWct_7bgiLnPPAjfdIo6uPn-Iqsw3ic3tUzNhsbcXd0xW38ptftsM-hJq9-anJlWxWiso5Dz8wNl4g")
+VK_TOKEN          = os.environ.get("VK_TOKEN", "vk1.a.3UN55p9OKW1JeBjyRE2shmMr3ZHKl2IYzmD5IMAFRxW88AbiWuirf7BzfW80OvWb52E3C3VG-xkeNC-WimVvS8P_EtLdCSxmocCylmzqOJxxPLDKdAllGPn-_bPzjTTL1Lebvv10FIuqfuFd9nwOyYcHujbKLsvz_zKEAik6MiShZ0zlyTJwoRy2kPjuANQpgwLo_x0ude2RVPQ9aZ6lBg")
 VK_API_URL        = "https://api.vk.com/method"
 VK_VERSION        = "5.131"
 VK_SERVICE        = 3756
@@ -240,8 +240,11 @@ def _get_vk_post_raw(page_slug, attempt=1):
                                   f"новые посты в это время не проверяются.")
                 return None, None
             if err.get("error_code") in (5, 27, 28):
-                log("VK", "🔑 Токен VK недействителен — нужно получить новый "
-                          "и заменить переменную VK_TOKEN в Railway")
+                with _vk_lock:
+                    if _vk_blocked_until[0] < time.time():
+                        _vk_blocked_until[0] = time.time() + VK_COOLDOWN
+                        log("VK", "🔑 Токен VK недействителен — нужен новый. "
+                                  f"Пауза {VK_COOLDOWN // 60} мин.")
                 return None, None
             log("VK", f"❌ @{page_slug}: {err.get('error_msg', err)}")
             return None, None
