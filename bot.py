@@ -187,7 +187,11 @@ VK_CACHE_TTL = 150
 _vk_cache = {}          # page -> (timestamp, (post_id, post_url))
 _vk_lock = threading.Lock()
 _vk_last_call = [0.0]   # время последнего обращения к API (общее для всех потоков)
-VK_MIN_GAP = 1.2        # минимальная пауза между запросами к VK, сек
+VK_MIN_GAP = 1.5        # минимальная пауза между запросами к VK, сек
+
+# Если VK ответил "Flood control", замолкаем целиком на этот срок.
+VK_COOLDOWN = 900       # 15 минут
+_vk_blocked_until = [0.0]
 
 
 def _vk_throttle():
@@ -211,6 +215,14 @@ def get_vk_post(page_slug, use_cache=True):
 
 
 def _get_vk_post_raw(page_slug, attempt=1):
+    left = _vk_blocked_until[0] - time.time()
+    if left > 0:
+        return None, None
+    if _vk_blocked_until[0] and left <= 0:
+        with _vk_lock:
+            if _vk_blocked_until[0]:
+                _vk_blocked_until[0] = 0.0
+                log("VK", "▶️  Пауза закончилась, продолжаю проверку страниц")
     _vk_throttle()
     try:
         resp = requests.get(f"{VK_API_URL}/wall.get", params={
@@ -220,11 +232,13 @@ def _get_vk_post_raw(page_slug, attempt=1):
         data = resp.json()
         if "error" in data:
             err = data["error"]
-            if err.get("error_code") == 9 and attempt <= 3:
-                pause = 5 * attempt
-                log("VK", f"⏳ @{page_slug}: VK просит подождать, повтор через {pause}с")
-                time.sleep(pause)
-                return _get_vk_post_raw(page_slug, attempt + 1)
+            if err.get("error_code") == 9:
+                with _vk_lock:
+                    if _vk_blocked_until[0] < time.time():
+                        _vk_blocked_until[0] = time.time() + VK_COOLDOWN
+                        log("VK", f"🛑 VK включил ограничение. Пауза {VK_COOLDOWN // 60} мин, "
+                                  f"новые посты в это время не проверяются.")
+                return None, None
             log("VK", f"❌ @{page_slug}: {err.get('error_msg', err)}")
             return None, None
         items = data.get("response", {}).get("items", [])
