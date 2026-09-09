@@ -21,7 +21,7 @@ VK_TOKEN          = "vk1.a.3l-M4WzpxupxkQ1LO5QEJKxhXtlyzgP6m9f7UnUXmtmOCGTp8Pj26
 VK_API_URL        = "https://api.vk.com/method"
 VK_VERSION        = "5.131"
 VK_SERVICE        = 3756
-VK_CHECK_INTERVAL = 60
+VK_CHECK_INTERVAL = 180   # реже опрашиваем — VK ругается на частые запросы
 
 from datetime import date as _date_cls
 
@@ -181,7 +181,37 @@ def check_balance():
 # ══════════════════════════════════════
 #  VKONTAKTE
 # ══════════════════════════════════════
-def get_vk_post(page_slug):
+# Общий кеш ответов VK: оба потока (лайки и комменты) читают одни и те же
+# страницы, поэтому запрашиваем каждую не чаще, чем раз в VK_CACHE_TTL секунд.
+VK_CACHE_TTL = 150
+_vk_cache = {}          # page -> (timestamp, (post_id, post_url))
+_vk_lock = threading.Lock()
+_vk_last_call = [0.0]   # время последнего обращения к API (общее для всех потоков)
+VK_MIN_GAP = 1.2        # минимальная пауза между запросами к VK, сек
+
+
+def _vk_throttle():
+    """Не даём двум потокам бить по API чаще, чем раз в VK_MIN_GAP секунд."""
+    with _vk_lock:
+        wait = VK_MIN_GAP - (time.time() - _vk_last_call[0])
+        if wait > 0:
+            time.sleep(wait)
+        _vk_last_call[0] = time.time()
+
+
+def get_vk_post(page_slug, use_cache=True):
+    if use_cache:
+        cached = _vk_cache.get(page_slug)
+        if cached and time.time() - cached[0] < VK_CACHE_TTL:
+            return cached[1]
+    result = _get_vk_post_raw(page_slug)
+    if result[0]:
+        _vk_cache[page_slug] = (time.time(), result)
+    return result
+
+
+def _get_vk_post_raw(page_slug, attempt=1):
+    _vk_throttle()
     try:
         resp = requests.get(f"{VK_API_URL}/wall.get", params={
             "domain": page_slug, "count": 10, "filter": "owner",
@@ -189,7 +219,13 @@ def get_vk_post(page_slug):
         }, timeout=15)
         data = resp.json()
         if "error" in data:
-            log("VK", f"❌ API ошибка: {data['error']}")
+            err = data["error"]
+            if err.get("error_code") == 9 and attempt <= 3:
+                pause = 5 * attempt
+                log("VK", f"⏳ @{page_slug}: VK просит подождать, повтор через {pause}с")
+                time.sleep(pause)
+                return _get_vk_post_raw(page_slug, attempt + 1)
+            log("VK", f"❌ @{page_slug}: {err.get('error_msg', err)}")
             return None, None
         items = data.get("response", {}).get("items", [])
         if not items:
@@ -272,6 +308,7 @@ def vk_bot():
                     save_state_dict("vk_last_posts.txt", state)
                 else:
                     log("VK", f"🔍 @{page} — нет новых постов (последний: #{last_id})")
+                time.sleep(1)
 
             # Мониторинг фото-альбомов
             for owner_id, album_id, qmin, qmax in VK_PHOTO_ALBUMS:
@@ -950,7 +987,7 @@ SP_PHOTO_ALBUMS   = [
 ]
 SP_PRICE_USER     = 1.0            # цена за выполнение для исполнителя (руб)
 SP_PRICE_ADV      = 1.3            # наценка/комиссия сверху за выполнение
-SP_CHECK_INTERVAL = 60             # проверка каждую минуту
+SP_CHECK_INTERVAL = 180            # проверка раз в 3 минуты
 
 def sp_api(act, **params):
     """Базовый вызов SocPublic API. Возвращает распарсенный JSON (dict) или None."""
