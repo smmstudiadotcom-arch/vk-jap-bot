@@ -42,7 +42,6 @@ VK_TEMPORARY = [
     # (страница, дата_окончания, мин, макс)
     ("vkusnyashki_ot_milashki",  "2026-09-15", 40, 60),
     ("vica.nikiforova",          "2026-09-20", 50, 70),
-    ("club238246388",            "2026-10-10", 30, 45),
 ]
 
 def vk_get_all_pages_with_ranges():
@@ -1002,7 +1001,6 @@ SP_PAGES          = [
     ("quietconfessions",   5, 12, None),
     ("vkusnyashki_ot_milashki", 4, 12, "2026-09-15"),
     ("vica.nikiforova",         7, 15, "2026-09-20"),
-    ("club238246388",           4, 10, "2026-10-10"),
 ]
 SP_PHOTO_ALBUMS   = [
 ]
