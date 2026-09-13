@@ -32,7 +32,6 @@ VK_PERMANENT = [
     # (страницы, мин_лайков, макс_лайков)
     (["pro_samorasvitie", "vera_lartseva"],                                                          50, 120),
     (["patronsanme"],                                                                                50, 100),
-    (["quietconfessions"],                                                                           40, 60),
 ]
 
 # ══════════════════════════════════════
@@ -998,7 +997,6 @@ SP_PAGES          = [
     ("smm.studia",         7, 14, None),
     ("pro_samorasvitie",   7, 14, None),
     ("sanmerus",           5, 10, None),
-    ("quietconfessions",   5, 12, None),
     ("vkusnyashki_ot_milashki", 4, 12, "2026-09-15"),
     ("vica.nikiforova",         7, 15, "2026-09-20"),
 ]
