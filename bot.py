@@ -39,7 +39,6 @@ VK_PERMANENT = [
 # ══════════════════════════════════════
 VK_TEMPORARY = [
     # (страница, дата_окончания, мин, макс)
-    ("vkusnyashki_ot_milashki",  "2026-09-15", 40, 60),
     ("vica.nikiforova",          "2026-09-20", 50, 70),
 ]
 
@@ -997,7 +996,6 @@ SP_PAGES          = [
     ("smm.studia",         7, 14, None),
     ("pro_samorasvitie",   7, 14, None),
     ("sanmerus",           5, 10, None),
-    ("vkusnyashki_ot_milashki", 4, 12, "2026-09-15"),
     ("vica.nikiforova",         7, 15, "2026-09-20"),
 ]
 SP_PHOTO_ALBUMS   = [
