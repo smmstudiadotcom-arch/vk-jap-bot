@@ -40,6 +40,7 @@ VK_PERMANENT = [
 VK_TEMPORARY = [
     # (страница, дата_окончания, мин, макс)
     ("vica.nikiforova",          "2026-09-20", 50, 70),
+    ("quietconfessions",         "2026-09-20", 40, 60),
 ]
 
 def vk_get_all_pages_with_ranges():
@@ -997,6 +998,7 @@ SP_PAGES          = [
     ("pro_samorasvitie",   7, 14, None),
     ("sanmerus",           5, 10, None),
     ("vica.nikiforova",         7, 15, "2026-09-20"),
+    ("quietconfessions",        5, 12, "2026-09-20"),
 ]
 SP_PHOTO_ALBUMS   = [
 ]
