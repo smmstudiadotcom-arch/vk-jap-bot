@@ -81,6 +81,7 @@ TW_LIKE_MIN     = 10
 TW_LIKE_MAX     = 25
 TW_SP_COMMENTS_MIN = 2
 TW_SP_COMMENTS_MAX = 4
+TW_SP_DAILY_LIMIT  = 10      # не больше стольких заданий на комменты в сутки
 TW_CHECK_INTERVAL = 60
 
 TW_AUTH_TOKEN = "2dbd598ed7dac67ddcf07976325dbb708dd9e6e2"
@@ -454,6 +455,29 @@ def get_latest_tweet(user_id):
     log("Twitter", f"✅ Последний твит: {tweet_url}")
     return latest_id, tweet_url
 
+TW_SP_COUNTER_FILE = "tw_sp_daily.txt"
+
+
+def tw_sp_used_today():
+    """Сколько заданий на комменты уже создано сегодня."""
+    try:
+        with open(TW_SP_COUNTER_FILE) as f:
+            day, count = f.read().strip().split()
+        return int(count) if day == _date_cls.today().isoformat() else 0
+    except Exception:
+        return 0
+
+
+def tw_sp_count_up(used):
+    """used — значение, прочитанное ДО записи, иначе счётчик сбивается."""
+    today = _date_cls.today().isoformat()
+    try:
+        with open(TW_SP_COUNTER_FILE, "w") as f:
+            f.write(f"{today} {used + 1}")
+    except Exception as e:
+        log("Twitter", f"⚠️  Не смог записать счётчик: {e}")
+
+
 def twitter_bot():
     log("Twitter", f"🐦 Запущен | @{TW_USERNAME} | Услуга: {TW_SERVICE} | {TW_QTY_MIN}-{TW_QTY_MAX}")
 
@@ -488,7 +512,14 @@ def twitter_bot():
                 time.sleep(2)
                 create_jap_order("Twitter", tweet_url, TW_LIKE_SERVICE, TW_LIKE_MIN, TW_LIKE_MAX)
                 time.sleep(2)
-                sp_create_task_twitter(tweet_url, TW_SP_COMMENTS_MIN, TW_SP_COMMENTS_MAX)
+                used = tw_sp_used_today()
+                if used < TW_SP_DAILY_LIMIT:
+                    if sp_create_task_twitter(tweet_url, TW_SP_COMMENTS_MIN, TW_SP_COMMENTS_MAX):
+                        tw_sp_count_up(used)
+                        log("Twitter", f"💬 Комменты: {used + 1} из {TW_SP_DAILY_LIMIT} за сутки")
+                else:
+                    log("Twitter", f"⏸️  Лимит комментов на сутки исчерпан "
+                                   f"({TW_SP_DAILY_LIMIT}), задание не создаю")
                 save_state("last_tweet_id.txt", latest_id)
                 last_id = latest_id
             else:
