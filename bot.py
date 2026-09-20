@@ -1313,6 +1313,10 @@ DZEN_CHANNELS = {
         (6448,  35,  65, "лайки"),
         (3250, 100, 200, "дочитывания"),
     ]),
+    "pro_samorasvitie": (None, [
+        (6448,  35,  65, "лайки"),
+        (3250, 100, 200, "дочитывания"),
+    ]),
 }
 DZEN_CHECK_INTERVAL = 300     # раз в 5 минут
 DZEN_MAX_PER_ROUND  = 3       # сколько публикаций обрабатывать за круг
@@ -1344,7 +1348,9 @@ def _dzen_headers(user_agent):
 def dzen_get_posts(publisher_id):
     """Читает страницу канала и достаёт ссылки на публикации.
     Возвращает список (позиция, ссылка, заголовок) — свежие первыми."""
-    url = f"https://dzen.ru/id/{publisher_id}"
+    # каналы с идентификатором открываются через /id/, с коротким именем — напрямую
+    is_id = len(publisher_id) == 24 and all(c in "0123456789abcdef" for c in publisher_id)
+    url = f"https://dzen.ru/id/{publisher_id}" if is_id else f"https://dzen.ru/{publisher_id}"
     html = ""
     for label, ua in DZEN_CLIENTS:
         try:
