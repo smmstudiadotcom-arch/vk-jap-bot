@@ -1307,12 +1307,12 @@ def socpublic_bot():
 # ══════════════════════════════════════
 #  ДЗЕН
 # ══════════════════════════════════════
-# publisher_id → список услуг: (услуга, мин, макс, подпись)
+# publisher_id → (дата_окончания или None, список услуг: услуга, мин, макс, подпись)
 DZEN_CHANNELS = {
-    "68ea450c978db60bb2b97d50": [
+    "68ea450c978db60bb2b97d50": ("2026-10-12", [
         (6448,  35,  65, "лайки"),
         (3250, 100, 200, "дочитывания"),
-    ],
+    ]),
 }
 DZEN_CHECK_INTERVAL = 300     # раз в 5 минут
 DZEN_MAX_PER_ROUND  = 3       # сколько публикаций обрабатывать за круг
@@ -1406,7 +1406,10 @@ def dzen_bot():
     while True:
         time.sleep(DZEN_CHECK_INTERVAL)
         try:
-            for pid, services in DZEN_CHANNELS.items():
+            today = _date_cls.today().isoformat()
+            for pid, (expires, services) in DZEN_CHANNELS.items():
+                if expires and today > expires:
+                    continue
                 posts = dzen_get_posts(pid)
                 if not posts:
                     continue
