@@ -1304,8 +1304,121 @@ def socpublic_bot():
             log("SocPublic", f"❌ Ошибка: {e}")
 
 
+# ══════════════════════════════════════
+#  ДЗЕН
+# ══════════════════════════════════════
+# publisher_id → список услуг: (услуга, мин, макс, подпись)
+DZEN_CHANNELS = {
+    "68ea450c978db60bb2b97d50": [
+        (6448,  35,  65, "лайки"),
+        (3250, 100, 200, "дочитывания"),
+    ],
+}
+DZEN_CHECK_INTERVAL = 300     # раз в 5 минут
+DZEN_MAX_PER_ROUND  = 3       # сколько публикаций обрабатывать за круг
+
+DZEN_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                   "AppleWebKit/537.36 (KHTML, like Gecko) "
+                   "Chrome/120.0.0.0 Safari/537.36"),
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "ru-RU,ru;q=0.9",
+}
+
+
+def dzen_get_posts(publisher_id):
+    """Публикации канала из ленты Дзена: список (дата, ссылка, заголовок), свежие первыми."""
+    url = f"https://dzen.ru/api/v3/launcher/export?publisher_id={publisher_id}"
+    try:
+        r = requests.get(url, headers=DZEN_HEADERS, timeout=20)
+        if r.status_code != 200:
+            log("Dzen", f"❌ Статус {r.status_code}")
+            return []
+        data = r.json()
+    except Exception as e:
+        log("Dzen", f"❌ Не смог прочитать ленту: {e}")
+        return []
+
+    posts = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            item = node.get("contentItem")
+            if isinstance(item, dict):
+                link = item.get("link", "")
+                src = (item.get("source") or {}).get("id", "")
+                topic = (item.get("topic") or {}).get("id", "")
+                if link and publisher_id in (src, topic):
+                    posts.append((
+                        item.get("publication_date", 0),
+                        link.split("?")[0],
+                        item.get("title", ""),
+                    ))
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(data)
+    posts.sort(key=lambda x: x[0], reverse=True)
+    return posts
+
+
+def dzen_bot():
+    names = ", ".join(pid[:8] for pid in DZEN_CHANNELS)
+    log("Dzen", f"📰 Запущен | Каналов: {len(DZEN_CHANNELS)} ({names})")
+
+    state_file = "dzen_last_posts.txt"
+    state = load_state_dict(state_file)
+
+    for pid in DZEN_CHANNELS:
+        if pid not in state:
+            posts = dzen_get_posts(pid)
+            if posts:
+                state[pid] = posts[0][1]
+                log("Dzen", f"📌 {pid[:8]} — последняя публикация: {state[pid]}. Жду новые...")
+            else:
+                log("Dzen", f"⚠️  {pid[:8]} — публикации не найдены, проверь идентификатор канала")
+    save_state_dict(state_file, state)
+
+    while True:
+        time.sleep(DZEN_CHECK_INTERVAL)
+        try:
+            for pid, services in DZEN_CHANNELS.items():
+                posts = dzen_get_posts(pid)
+                if not posts:
+                    continue
+
+                last = state.get(pid)
+                fresh = []
+                for _, link, title in posts:
+                    if link == last:
+                        break
+                    fresh.append((link, title))
+
+                if not fresh:
+                    log("Dzen", f"🔍 {pid[:8]} — нет новых публикаций")
+                    continue
+
+                for link, title in reversed(fresh[:DZEN_MAX_PER_ROUND]):
+                    log("Dzen", f"🆕 {title[:60]}")
+                    log("Dzen", f"   {link}")
+                    for service, qmin, qmax, label in services:
+                        create_jap_order("Dzen", link, service, qmin, qmax)
+                        log("Dzen", f"   ↳ {label}")
+                        time.sleep(2)
+
+                state[pid] = posts[0][1]
+                save_state_dict(state_file, state)
+                log("Dzen", f"💾 Запомнил {state[pid]}")
+                time.sleep(2)
+        except Exception as e:
+            log("Dzen", f"❌ Ошибка: {e}")
+
+
 def main():
-    log("MAIN", "🚀 VK + Rutube + Twitter + YouTube + Facebook + SocPublic бот запущен!")
+    log("MAIN", "🚀 VK + Rutube + Twitter + YouTube + Facebook + SocPublic + Dzen бот запущен!")
     check_balance()
 
     threads = [
@@ -1315,13 +1428,14 @@ def main():
         threading.Thread(target=youtube_bot,   name="YouTube",  daemon=True),
         threading.Thread(target=facebook_bot,  name="Facebook", daemon=True),
         threading.Thread(target=socpublic_bot, name="SocPublic",daemon=True),
+        threading.Thread(target=dzen_bot,      name="Dzen",     daemon=True),
     ]
 
     for t in threads:
         t.start()
         time.sleep(3)
 
-    log("MAIN", "✅ Все 6 ботов запущены! VK + Rutube + Twitter + YouTube + Facebook + SocPublic")
+    log("MAIN", "✅ Все 7 ботов запущены! VK + Rutube + Twitter + YouTube + Facebook + SocPublic + Dzen")
 
     while True:
         time.sleep(3600)
