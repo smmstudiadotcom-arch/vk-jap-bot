@@ -1327,41 +1327,38 @@ DZEN_HEADERS = {
 
 
 def dzen_get_posts(publisher_id):
-    """Публикации канала из ленты Дзена: список (дата, ссылка, заголовок), свежие первыми."""
-    url = f"https://dzen.ru/api/v3/launcher/export?publisher_id={publisher_id}"
+    """Читает страницу канала и достаёт ссылки на публикации.
+    Возвращает список (позиция, ссылка, заголовок) — свежие первыми."""
+    url = f"https://dzen.ru/id/{publisher_id}"
     try:
         r = requests.get(url, headers=DZEN_HEADERS, timeout=20)
         if r.status_code != 200:
             log("Dzen", f"❌ Статус {r.status_code}")
             return []
-        data = r.json()
+        html = r.text
     except Exception as e:
-        log("Dzen", f"❌ Не смог прочитать ленту: {e}")
+        log("Dzen", f"❌ Не смог открыть страницу канала: {e}")
         return []
 
-    posts = []
+    # ссылки вида https://dzen.ru/a/XXXXXXXX
+    links = re.findall(r'https://dzen\.ru/a/[A-Za-z0-9_\-]+', html)
 
-    def walk(node):
-        if isinstance(node, dict):
-            item = node.get("contentItem")
-            if isinstance(item, dict):
-                link = item.get("link", "")
-                src = (item.get("source") or {}).get("id", "")
-                topic = (item.get("topic") or {}).get("id", "")
-                if link and publisher_id in (src, topic):
-                    posts.append((
-                        item.get("publication_date", 0),
-                        link.split("?")[0],
-                        item.get("title", ""),
-                    ))
-            for v in node.values():
-                walk(v)
-        elif isinstance(node, list):
-            for v in node:
-                walk(v)
+    seen, posts = set(), []
+    for link in links:
+        link = link.split("?")[0]
+        if link in seen:
+            continue
+        seen.add(link)
+        # заголовок рядом со ссылкой, если попадётся
+        title = ""
+        m = re.search(re.escape(link) + r'[^>]*>([^<]{5,120})<', html)
+        if m:
+            title = m.group(1).strip()
+        posts.append((len(posts), link, title))
 
-    walk(data)
-    posts.sort(key=lambda x: x[0], reverse=True)
+    if not posts:
+        log("Dzen", "⚠️  На странице канала не нашлось публикаций — "
+                    "возможно, Дзен отдал серверу другую версию страницы")
     return posts
 
 
