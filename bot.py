@@ -1317,30 +1317,54 @@ DZEN_CHANNELS = {
 DZEN_CHECK_INTERVAL = 300     # раз в 5 минут
 DZEN_MAX_PER_ROUND  = 3       # сколько публикаций обрабатывать за круг
 
-DZEN_HEADERS = {
-    "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                   "AppleWebKit/537.36 (KHTML, like Gecko) "
-                   "Chrome/120.0.0.0 Safari/537.36"),
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "ru-RU,ru;q=0.9",
-}
+# Дзен отдаёт разным клиентам разные версии страницы — пробуем по очереди
+DZEN_CLIENTS = [
+    ("мобильный Safari",
+     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 "
+     "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"),
+    ("приложение Дзена",
+     "com.yandex.zen/2.100.0 (iPhone; iOS 17.0; Scale/3.00)"),
+    ("робот Яндекса",
+     "Mozilla/5.0 (compatible; YandexBot/3.0; +http://yandex.com/bots)"),
+    ("Chrome на Маке",
+     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+]
+
+
+def _dzen_headers(user_agent):
+    return {
+        "User-Agent": user_agent,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ru-RU,ru;q=0.9",
+        "Cache-Control": "no-cache",
+    }
 
 
 def dzen_get_posts(publisher_id):
     """Читает страницу канала и достаёт ссылки на публикации.
     Возвращает список (позиция, ссылка, заголовок) — свежие первыми."""
     url = f"https://dzen.ru/id/{publisher_id}"
-    try:
-        r = requests.get(url, headers=DZEN_HEADERS, timeout=20)
-        if r.status_code != 200:
-            log("Dzen", f"❌ Статус {r.status_code}")
-            return []
-        html = r.text
-    except Exception as e:
-        log("Dzen", f"❌ Не смог открыть страницу канала: {e}")
+    html = ""
+    for label, ua in DZEN_CLIENTS:
+        try:
+            r = requests.get(url, headers=_dzen_headers(ua), timeout=20)
+            if r.status_code != 200:
+                log("Dzen", f"   {label}: статус {r.status_code}")
+                continue
+            if "dzen.ru/a/" in r.text:
+                html = r.text
+                log("Dzen", f"   {label}: страница получена ({len(r.text) // 1024} КБ)")
+                break
+            log("Dzen", f"   {label}: страница без публикаций ({len(r.text) // 1024} КБ)")
+        except Exception as e:
+            log("Dzen", f"   {label}: {e}")
+        time.sleep(1)
+
+    if not html:
+        log("Dzen", "⚠️  Ни один способ не получил публикации — Дзен закрывается от сервера")
         return []
 
-    # ссылки вида https://dzen.ru/a/XXXXXXXX
     links = re.findall(r'https://dzen\.ru/a/[A-Za-z0-9_\-]+', html)
 
     seen, posts = set(), []
