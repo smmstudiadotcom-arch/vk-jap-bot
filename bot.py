@@ -40,6 +40,12 @@ VK_PERMANENT = [
 VK_TEMPORARY = [
     # (страница, дата_окончания, мин, макс)
     ("quietconfessions",         "2026-09-25", 40, 60),
+    ("a_polovkov",               "2026-10-01", 25, 45),
+]
+
+# Просмотры клипов: (страница, услуга, мин, макс, дата_окончания)
+VK_CLIPS = [
+    ("a_polovkov", 3766, 2000, 5000, "2026-10-01"),
 ]
 
 def vk_get_all_pages_with_ranges():
@@ -212,6 +218,21 @@ def get_vk_post(page_slug, use_cache=True):
     return result
 
 
+_vk_clip_cache = {}     # page -> ссылка на клип последнего поста (или None)
+
+
+def _extract_clip_url(post):
+    """Ищет видео во вложениях поста и возвращает ссылку на клип."""
+    for att in post.get("attachments", []) or []:
+        if att.get("type") != "video":
+            continue
+        v = att.get("video", {})
+        oid, vid = v.get("owner_id"), v.get("id")
+        if oid and vid:
+            return f"https://vk.com/clip{oid}_{vid}"
+    return None
+
+
 def _get_vk_post_raw(page_slug, attempt=1):
     left = _vk_blocked_until[0] - time.time()
     if left > 0:
@@ -256,6 +277,7 @@ def _get_vk_post_raw(page_slug, attempt=1):
         owner_id = latest["owner_id"]
         post_id = latest["id"]
         post_url = f"https://vk.com/wall{owner_id}_{post_id}"
+        _vk_clip_cache[page_slug] = _extract_clip_url(latest)
         log("VK", f"✅ Последний пост @{page_slug}: {post_url}")
         return f"{owner_id}_{post_id}", post_url
     except Exception as e:
@@ -323,6 +345,18 @@ def vk_bot():
                 if latest_id != last_id:
                     log("VK", f"🆕 Новый пост @{page}: {post_url}")
                     create_jap_order("VK", post_url, VK_SERVICE, qty_min, qty_max)
+
+                    # Если в посте клип — отдельный заказ на просмотры
+                    clip_cfg = next((c for c in VK_CLIPS if c[0] == page), None)
+                    if clip_cfg:
+                        _, srv, cmin, cmax, expires = clip_cfg
+                        if not expires or _date_cls.today().isoformat() <= expires:
+                            clip_url = _vk_clip_cache.get(page)
+                            if clip_url:
+                                time.sleep(2)
+                                log("VK", f"🎬 Клип: {clip_url}")
+                                create_jap_order("VK", clip_url, srv, cmin, cmax)
+
                     state[page] = latest_id
                     save_state_dict("vk_last_posts.txt", state)
                 else:
@@ -1028,6 +1062,7 @@ SP_PAGES          = [
     ("pro_samorasvitie",   7, 14, None),
     ("sanmerus",           5, 10, None),
     ("quietconfessions",        5, 12, "2026-09-25"),
+    ("a_polovkov",              7, 11, "2026-10-01"),
 ]
 SP_PHOTO_ALBUMS   = [
 ]
