@@ -39,7 +39,7 @@ VK_PERMANENT = [
 # ══════════════════════════════════════
 VK_TEMPORARY = [
     # (страница, дата_окончания, мин, макс)
-    ("quietconfessions",         "2026-09-25", 40, 60),
+    ("quietconfessions",         "2026-10-02", 40, 60),
     ("a_polovkov",               "2026-10-01", 25, 45),
     ("mitropolitlongin",         "2026-09-28", 100, 120),
 ]
@@ -1062,7 +1062,7 @@ SP_PAGES          = [
     ("smm.studia",         7, 14, None),
     ("pro_samorasvitie",   7, 14, None),
     ("sanmerus",           5, 10, None),
-    ("quietconfessions",        5, 12, "2026-09-25"),
+    ("quietconfessions",        5, 12, "2026-10-02"),
     ("a_polovkov",              7, 11, "2026-10-01"),
 ]
 SP_PHOTO_ALBUMS   = [
