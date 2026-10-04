@@ -40,13 +40,11 @@ VK_PERMANENT = [
 VK_TEMPORARY = [
     # (страница, дата_окончания, мин, макс)
     ("quietconfessions",         "2026-10-02", 40, 60),
-    ("a_polovkov",               "2026-10-01", 25, 45),
     ("mitropolitlongin",         "2026-09-28", 100, 120),
 ]
 
 # Просмотры клипов: (страница, услуга, мин, макс, дата_окончания)
 VK_CLIPS = [
-    ("a_polovkov", 3766, 2000, 5000, "2026-10-01"),
 ]
 
 def vk_get_all_pages_with_ranges():
@@ -840,15 +838,6 @@ FB_PAGES = [
         "qty_max":   1000,
         "all_posts": False,  # только Reels
     },
-    {
-        "name":      "kinshik",
-        "page_id":   "kinshik",
-        "url":       "https://www.facebook.com/kinshik",
-        "service":   7654,
-        "qty_min":   30,
-        "qty_max":   55,
-        "all_posts": True,  # все посты
-    },
 ]
 
 FB_CHECK_INTERVAL = 3600  # каждый час
@@ -1063,7 +1052,6 @@ SP_PAGES          = [
     ("pro_samorasvitie",   7, 14, None),
     ("sanmerus",           5, 10, None),
     ("quietconfessions",        5, 12, "2026-10-02"),
-    ("a_polovkov",              7, 11, "2026-10-01"),
 ]
 SP_PHOTO_ALBUMS   = [
 ]
