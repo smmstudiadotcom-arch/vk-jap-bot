@@ -41,6 +41,7 @@ VK_TEMPORARY = [
     # (страница, дата_окончания, мин, макс)
     ("quietconfessions",         "2026-10-02", 40, 60),
     ("mitropolitlongin",         "2026-09-28", 100, 120),
+    ("vica.nikiforova",          "2027-04-10", 50, 70),
 ]
 
 # Просмотры клипов: (страница, услуга, мин, макс, дата_окончания)
@@ -1052,6 +1053,7 @@ SP_PAGES          = [
     ("pro_samorasvitie",   7, 14, None),
     ("sanmerus",           5, 10, None),
     ("quietconfessions",        5, 12, "2026-10-02"),
+    ("vica.nikiforova",         7, 15, "2027-04-10"),
 ]
 SP_PHOTO_ALBUMS   = [
 ]
